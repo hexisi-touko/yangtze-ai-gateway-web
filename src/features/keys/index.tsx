@@ -1,0 +1,72 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { SectionPageLayout } from '@/components/layout'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+import { AdminMemberKeysTable } from './components/admin-member-keys-table'
+import { ApiKeysDialogs } from './components/api-keys-dialogs'
+import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
+import { ApiKeysProvider } from './components/api-keys-provider'
+import { ApiKeysTable } from './components/api-keys-table'
+
+type AdminKeyView = 'members' | 'mine'
+
+export function ApiKeys() {
+  const { t } = useTranslation()
+  const role = useAuthStore((state) => state.auth.user?.role)
+  const isAdmin = (role ?? 0) >= ROLE.ADMIN
+  const readOnly = role === ROLE.USER
+  const [adminView, setAdminView] = useState<AdminKeyView>('members')
+  const showOwnKeys = !isAdmin || adminView === 'mine'
+  return (
+    <ApiKeysProvider>
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          {isAdmin && (
+            <Tabs
+              value={adminView}
+              onValueChange={(value) => setAdminView(value as AdminKeyView)}
+            >
+              <TabsList>
+                <TabsTrigger value='members'>{t('Member keys')}</TabsTrigger>
+                <TabsTrigger value='mine'>{t('My keys')}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {showOwnKeys && !readOnly && <ApiKeysPrimaryButtons />}
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          {isAdmin && adminView === 'members' ? (
+            <AdminMemberKeysTable />
+          ) : (
+            <ApiKeysTable readOnly={readOnly} />
+          )}
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+
+      {showOwnKeys && !readOnly && <ApiKeysDialogs />}
+    </ApiKeysProvider>
+  )
+}
