@@ -53,6 +53,21 @@ const serverErrorMessageKeys = {
   member_usage_invalid_report: 'member_usage_invalid_report',
   member_usage_range_too_large: 'member_usage_range_too_large',
   member_usage_too_many_members: 'member_usage_too_many_members',
+  client_release_file_required: 'client_release_file_required',
+  client_release_file_must_be_exe: 'client_release_file_must_be_exe',
+  client_release_file_too_large: 'client_release_file_too_large',
+  client_release_file_unavailable: 'client_release_file_unavailable',
+  client_release_invalid_version: 'client_release_invalid_version',
+  client_release_invalid_platform: 'client_release_invalid_platform',
+  client_release_invalid_channel: 'client_release_invalid_channel',
+  client_release_notes_too_long: 'client_release_notes_too_long',
+  client_release_invalid_file_size: 'client_release_invalid_file_size',
+  client_release_invalid_sha256: 'client_release_invalid_sha256',
+  client_release_invalid_download_url: 'client_release_invalid_download_url',
+  client_release_download_url_must_use_https:
+    'client_release_download_url_must_use_https',
+  client_release_invalid_file_name: 'client_release_invalid_file_name',
+  client_release_conflict: 'client_release_conflict',
   AUTH_SESSION_LIMIT:
     'Too many active login sessions. On a device where you are already signed in, open Login sessions and use “Sign out other sessions” to revoke them. If you cannot access a signed-in device, reset your password to sign out all sessions.',
   AUTH_SESSION_ISSUANCE_LIMIT:

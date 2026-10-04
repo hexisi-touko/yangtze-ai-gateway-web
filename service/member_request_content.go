@@ -43,6 +43,12 @@ func CaptureMemberRequestContent(ctx context.Context, userID int, username, requ
 	// audit record focused on the member's current request instead of storing
 	// repeated history and injected runtime instructions.
 	content := memberRequestContentOnly(redacted)
+	// A Harness request can contain only runtime instructions (for example when
+	// the client is starting a session). Do not create a misleading audit row
+	// for that payload; the next real member turn will be captured normally.
+	if strings.TrimSpace(content) == "" {
+		return
+	}
 	// Limit the extracted text, not serialized JSON: cutting JSON would make
 	// it unreadable, and escaping <, > and & can increase its byte length.
 	var message struct {
@@ -90,10 +96,14 @@ func memberRequestContentOnly(content string) string {
 		}
 		for _, key := range []string{"prompt", "query", "text", "input"} {
 			if text, ok := body[key].(string); ok && strings.TrimSpace(text) != "" {
-				if encoded, err := common.Marshal(map[string]any{"role": "user", "content": stripHarnessRuntimeContext(text)}); err == nil {
+				cleaned := stripHarnessRuntimeContext(text)
+				if strings.TrimSpace(cleaned) == "" {
+					return ""
+				}
+				if encoded, err := common.Marshal(map[string]any{"role": "user", "content": cleaned}); err == nil {
 					return string(encoded)
 				}
-				return stripHarnessRuntimeContext(text)
+				return cleaned
 			}
 		}
 	}
@@ -104,7 +114,11 @@ func memberMessages(value any) []string {
 	items, ok := value.([]any)
 	if !ok {
 		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
-			return []string{stripHarnessRuntimeContext(text)}
+			text = stripHarnessRuntimeContext(text)
+			if text == "" {
+				return nil
+			}
+			return []string{text}
 		}
 		return nil
 	}
@@ -233,10 +247,17 @@ func rootedWorkspacePath(value string) bool {
 
 func stripHarnessRuntimeContext(text string) string {
 	text = strings.TrimSpace(text)
+	// Harness serializes its internal context as XML-like blocks inside the
+	// member's input. Remove these blocks before the content reaches storage.
+	// They contain system prompts, skill manifests and local policy text rather
+	// than the member's request.
+	for _, pattern := range harnessRuntimeBlockPatterns {
+		text = pattern.ReplaceAllString(text, "")
+	}
 	lower := strings.ToLower(text)
 	// The harness places the actual turn after a labelled user message. Keep
 	// only that suffix when present.
-	for _, marker := range []string{"\nuser message:", "\nuser request:"} {
+	for _, marker := range []string{"\nuser message:", "\nuser request:", "\nmember message:", "\nmember request:"} {
 		if index := strings.LastIndex(lower, marker); index >= 0 {
 			return strings.TrimSpace(text[index+len(marker):])
 		}
@@ -255,6 +276,15 @@ func stripHarnessRuntimeContext(text string) string {
 		filtered = append(filtered, line)
 	}
 	return strings.TrimSpace(strings.Join(filtered, "\n"))
+}
+
+var harnessRuntimeBlockPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?is)<system-reminder\b[^>]*>.*?</system-reminder\s*>`),
+	regexp.MustCompile(`(?is)<available_skills\b[^>]*>.*?</available_skills\s*>`),
+	regexp.MustCompile(`(?is)<environment_context\b[^>]*>.*?</environment_context\s*>`),
+	regexp.MustCompile(`(?is)<app-context\b[^>]*>.*?</app-context\s*>`),
+	regexp.MustCompile(`(?is)<skills_instructions\b[^>]*>.*?</skills_instructions\s*>`),
+	regexp.MustCompile(`(?is)<permissions\s+instructions\b[^>]*>.*?</permissions\s+instructions\s*>`),
 }
 
 func redactRequestBody(raw []byte) string {
@@ -321,7 +351,41 @@ func ListMemberRequestContent(ctx context.Context, userID int, start, end int64,
 		// applying AutoMigrate. Once the process is restarted, real rows appear.
 		return []model.MemberRequestContent{}, nil
 	}
-	return rows, err
+	if err != nil {
+		return nil, err
+	}
+	// Normalize rows written by older deployments on read as well. This keeps
+	// the administrator view clean immediately after an upgrade; old database
+	// rows do not need to be rewritten before they can be safely displayed.
+	cleaned := make([]model.MemberRequestContent, 0, len(rows))
+	for _, row := range rows {
+		row.Content = normalizeStoredMemberRequestContent(row.Content)
+		if strings.TrimSpace(row.Content) == "" {
+			continue
+		}
+		cleaned = append(cleaned, row)
+	}
+	return cleaned, nil
+}
+
+func normalizeStoredMemberRequestContent(content string) string {
+	var message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if common.Unmarshal([]byte(content), &message) == nil && message.Content != "" {
+		message.Content = stripHarnessRuntimeContext(message.Content)
+		if strings.TrimSpace(message.Content) == "" {
+			return ""
+		}
+		if message.Role == "" {
+			message.Role = "user"
+		}
+		if encoded, err := common.Marshal(message); err == nil {
+			return string(encoded)
+		}
+	}
+	return stripHarnessRuntimeContext(strings.TrimSpace(content))
 }
 
 func ListMemberRequestContentAlerts(ctx context.Context, userID int, start, end int64, limit int) ([]model.MemberRequestContentAlert, error) {

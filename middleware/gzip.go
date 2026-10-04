@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/andybalholm/brotli"
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,12 @@ func DecompressRequestMiddleware() gin.HandlerFunc {
 			return
 		}
 		maxMB := constant.MaxRequestBodyMB
+		// Client installers are multipart uploads and can be much larger than
+		// normal API payloads. The upload controller applies the authoritative
+		// file-size limit; keep the middleware just above it for multipart data.
+		if c.Request.URL.Path == "/api/client-releases/upload" {
+			maxMB = common.GetEnvOrDefault("MAX_CLIENT_RELEASE_SIZE_MB", 512) + 1
+		}
 		if maxMB <= 0 {
 			maxMB = 32
 		}

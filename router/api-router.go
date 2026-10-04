@@ -309,6 +309,18 @@ func SetApiRouter(router *gin.Engine) {
 			memberUsageRoute.GET("/request-contents", controller.GetMemberRequestContents)
 			memberUsageRoute.GET("/request-content-alerts", controller.GetMemberRequestContentAlerts)
 		}
+
+		apiRouter.GET("/client-releases/latest", middleware.DisableCache(), controller.GetLatestClientRelease)
+		apiRouter.GET("/client-releases/files/:file_name", middleware.DisableCache(), controller.DownloadClientReleaseFile)
+		clientReleaseRoute := apiRouter.Group("/client-releases", middleware.DisableCache(), middleware.AdminAuth())
+		{
+			clientReleaseRoute.GET("/", controller.ListClientReleases)
+			clientReleaseRoute.POST("/upload", middleware.CriticalRateLimit(), controller.UploadClientReleaseFile)
+			clientReleaseRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateClientRelease)
+			clientReleaseRoute.PUT("/:id", middleware.CriticalRateLimit(), controller.UpdateClientRelease)
+			clientReleaseRoute.POST("/:id/:action", middleware.CriticalRateLimit(), controller.SetClientReleasePublished)
+			clientReleaseRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.DeleteClientRelease)
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)

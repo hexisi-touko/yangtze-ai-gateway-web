@@ -16,8 +16,8 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
-    # Build the image from this repository so the cloud deployment includes
-    # the customized Go backend and embedded management frontend.
+    # Build from this checkout so the cloud deployment includes the
+    # management features in this branch instead of an older upstream image.
     build:
       context: .
       dockerfile: Dockerfile

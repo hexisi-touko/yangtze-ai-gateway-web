@@ -29,6 +29,7 @@ import {
   Radio,
   ServerCog,
   Settings,
+  PackageCheck,
   UserCheck,
   // Ticket,
   User,
@@ -140,6 +141,12 @@ export function useSidebarData(): SidebarData {
             title: t('Member Usage'),
             url: '/member-usage',
             icon: ChartNoAxesCombined,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Client releases'),
+            url: '/client-releases',
+            icon: PackageCheck,
             requiredRole: ROLE.ADMIN,
           },
           {
