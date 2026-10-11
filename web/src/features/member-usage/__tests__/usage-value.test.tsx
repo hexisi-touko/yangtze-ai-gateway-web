@@ -55,6 +55,96 @@ describe('non-profit value accounting', () => {
     expect(screen.queryByText('Profit')).not.toBeInTheDocument()
     expect(screen.getByText('0 / 1')).toBeInTheDocument()
   })
+  it('explains why the official reference value is pending', () => {
+    render(
+      <ValueOverview
+        data={{
+          ...data,
+          rows: [
+            {
+              user_id: 1,
+              username: 'researcher',
+              model: 'gpt-5.6-luna',
+              channel_id: 1,
+              records: 1,
+              priced: 0,
+              input: 100,
+              output: 0,
+              cache_read: 0,
+              cache_write: 0,
+              reference_value: '0',
+              pending: { missing_price: 1 },
+              price_ids: [],
+            },
+          ],
+        }}
+      />
+    )
+    expect(
+      screen.getByText('value_pending_price_explanation')
+    ).toBeInTheDocument()
+  })
+
+  it('shows the priced reference value when only some records are pending', () => {
+    render(
+      <ValueOverview
+        data={{
+          ...data,
+          records: 3,
+          priced: 2,
+          reference_value: '10',
+          rows: [
+            {
+              user_id: 1,
+              username: 'researcher',
+              model: 'gpt-5.6-luna',
+              channel_id: 1,
+              records: 3,
+              priced: 2,
+              input: 100,
+              output: 0,
+              cache_read: 0,
+              cache_write: 0,
+              reference_value: '10',
+              pending: { missing_usage: 1 },
+              price_ids: [1],
+            },
+          ],
+        }}
+      />
+    )
+    expect(screen.getByText('¥10.00')).toBeInTheDocument()
+    expect(screen.queryByText('Not calculated')).not.toBeInTheDocument()
+  })
+  it('does not label missing usage data as a missing official price', () => {
+    render(
+      <ValueOverview
+        data={{
+          ...data,
+          rows: [
+            {
+              user_id: 1,
+              username: 'researcher',
+              model: 'gpt-5.6-luna',
+              channel_id: 1,
+              records: 1,
+              priced: 0,
+              input: 0,
+              output: 0,
+              cache_read: 0,
+              cache_write: 0,
+              reference_value: '0',
+              pending: { missing_usage: 1 },
+              price_ids: [],
+            },
+          ],
+        }}
+      />
+    )
+    expect(
+      screen.queryByText('value_pending_price_explanation')
+    ).not.toBeInTheDocument()
+  })
   it('clamps a historical negative saving to zero in the administrator view', () => {
     render(
       <ValueOverview

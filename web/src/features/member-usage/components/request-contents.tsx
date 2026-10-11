@@ -261,6 +261,18 @@ function extractConversation(content: string): ConversationMessage[] {
   return []
 }
 
+function isInternalHarnessMessage(text: string): boolean {
+  const normalized = text.trim()
+  return (
+    /^background\s+(?:subagent|agent)\b.*\bfinished\b.*\bno further work\b/i.test(
+      normalized
+    ) ||
+    /^agent\s+[0-9a-f-]{16,}\s+sent\s+a\s+message:/i.test(normalized) ||
+    /\bfindings\s+sent\s+to\s+parent\s+agent\b/i.test(normalized) ||
+    /^key\s+conclusion\s*:/i.test(normalized)
+  )
+}
+
 function RequestConversation({ content }: { content: string }) {
   const { t } = useTranslation()
   const messages = extractConversation(content)
@@ -283,6 +295,7 @@ function RequestConversation({ content }: { content: string }) {
     ) {
       return false
     }
+    if (isInternalHarnessMessage(message.text)) return false
     return !/^\s*\[(model changed|system|developer|tool)\b/i.test(message.text)
   })
   // Each stored body may include the complete conversation history. The last
@@ -290,6 +303,9 @@ function RequestConversation({ content }: { content: string }) {
   // rendering earlier turns here made every row look like the full period.
   const lastMessage = visible.at(-1)
   const currentRequest = lastMessage ? [lastMessage] : []
+  const emptyMessage = messages.length
+    ? t('Conversation content hidden')
+    : t('Conversation content unavailable')
   return (
     <div className='space-y-3'>
       <div className='rounded-md border'>
@@ -314,7 +330,7 @@ function RequestConversation({ content }: { content: string }) {
           </div>
         ) : (
           <p className='text-muted-foreground px-3 py-4 text-sm'>
-            {t('Conversation content unavailable')}
+            {emptyMessage}
           </p>
         )}
       </div>

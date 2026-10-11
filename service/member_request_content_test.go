@@ -103,6 +103,35 @@ func TestMemberRequestContentOnlyDropsRuntimeOnlyHarnessPayload(t *testing.T) {
 	assert.Empty(t, content)
 }
 
+func TestMemberRequestContentOnlySkipsInternalHarnessReports(t *testing.T) {
+	content := memberRequestContentOnly(`{"input":[{"role":"user","content":"Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005 finished and will do no further work unless you send it more. Its closing message:Findings sent to parent agent"}]}`)
+
+	assert.Empty(t, content)
+}
+
+func TestMemberRequestContentOnlySkipsDirectInternalUserMessage(t *testing.T) {
+	content := memberRequestContentOnly(`{"role":"user","content":"Background subagent finished and will do no further work"}`)
+
+	assert.Empty(t, content)
+}
+
+func TestMemberRequestContentOnlySkipsForwardedAgentMessage(t *testing.T) {
+	content := memberRequestContentOnly(`{"role":"user","content":"Agent d47eb9f2-bcfd-4c5c-a803-979645a4f595 sent a message: 关键实践警告"}`)
+
+	assert.Empty(t, content)
+}
+
+func TestMemberRequestContentOnlyUsesDirectUserMessage(t *testing.T) {
+	content := memberRequestContentOnly(`{"role":"user","content":"请总结今天的工作"}`)
+
+	assert.JSONEq(t, `{"role":"user","content":"请总结今天的工作"}`, content)
+}
+
+func TestNormalizeStoredMemberRequestContentFiltersLegacyInternalMessage(t *testing.T) {
+	assert.Empty(t, normalizeStoredMemberRequestContent(`{"role":"user","content":"Agent d47eb9f2-bcfd-4c5c-a803-979645a4f595 sent a message: 关键实践警告"}`))
+	assert.JSONEq(t, `{"role":"user","content":"请总结今天的工作"}`, normalizeStoredMemberRequestContent(`{"role":"user","content":"请总结今天的工作"}`))
+}
+
 func TestExtractMemberWorkspaceFromHarnessRuntimeContext(t *testing.T) {
 	raw := []byte(`{"input":[{"role":"system","content":"Current runtime context. The current session workspace: \"D:\\夏至\\Documents\\测试\"."},{"role":"user","content":[{"type":"input_text","text":"请检查项目"}]}]}`)
 

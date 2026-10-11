@@ -310,7 +310,7 @@ export function ValueOverview(props: { data: ValueSummary }) {
   // saving is never less than zero.
   const savings = Number.isFinite(rawSavings) ? Math.max(0, rawSavings) : 0
   const referenceValue =
-    records === 0 || priced === records
+    records === 0 || priced > 0
       ? valueMoney(s.reference_value || '0')
       : t('Not calculated')
   const rows = Array.isArray(s.rows)
@@ -325,6 +325,10 @@ export function ValueOverview(props: { data: ValueSummary }) {
     : []
   const mergedRows = mergeMemberModelRows(rows)
   const memberGroups = groupRowsByMember(mergedRows)
+  const missingPriceRecords = rows.reduce(
+    (total, row) => total + (row.pending.missing_price ?? 0),
+    0
+  )
 
   const mainStats: Array<{ label: string; value: string; detail?: ReactNode }> =
     [
@@ -403,6 +407,13 @@ export function ValueOverview(props: { data: ValueSummary }) {
         {t('Hover a value to view model, price and calculation details.')}{' '}
         {t('value_nonprofit_scope')}
       </p>
+      {missingPriceRecords > 0 && (
+        <p className='border-amber-500/40 bg-amber-500/5 text-muted-foreground rounded-md border px-3 py-2 text-xs'>
+          {t('value_pending_price_explanation', {
+            count: missingPriceRecords,
+          })}
+        </p>
+      )}
       <div className='space-y-3'>
         {memberGroups.length === 0 && (
           <p className='text-muted-foreground py-6 text-center text-sm'>

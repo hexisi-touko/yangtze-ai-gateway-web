@@ -161,4 +161,90 @@ describe('member usage', () => {
       await screen.findByText('请用中文总结今天的工作')
     ).toBeInTheDocument()
   })
+
+  it('does not present an internal subagent report as the member message', async () => {
+    requestContentApi.getMemberRequestContents.mockResolvedValue([
+      {
+        id: 2,
+        user_id: 1,
+        username: 'researcher',
+        request_id: 'request-internal-report',
+        created_at: 1_789_600_001,
+        path: '/v1/responses',
+        model: 'gpt-5.5',
+        content:
+          '{"role":"user","content":"Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005 finished and will do no further work unless you send it more.\\n\\nFindings sent to parent agent."}',
+        content_hash: 'internal-content-hash',
+        bytes: 220,
+        truncated: false,
+      },
+    ])
+    requestContentApi.getMemberRequestContentAlerts.mockResolvedValue([])
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <QueryClientProvider client={client}>
+        <RequestContents
+          range={{ start: 1_789_500_000, end: 1_789_700_000 }}
+          members={[]}
+        />
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View request content' })
+    )
+
+    expect(
+      screen.queryByText(/Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005/)
+    ).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('Conversation content unavailable')
+    ).toBeInTheDocument()
+  })
+
+  it('does not present a forwarded agent message as the member message', async () => {
+    requestContentApi.getMemberRequestContents.mockResolvedValue([
+      {
+        id: 3,
+        user_id: 1,
+        username: 'researcher',
+        request_id: 'request-forwarded-agent',
+        created_at: 1_789_600_002,
+        path: '/v1/responses',
+        model: 'gpt-5.6-luna',
+        content:
+          '{"role":"user","content":"Agent d47eb9f2-bcfd-4c5c-a803-979645a4f595 sent a message: 关键实践警告"}',
+        content_hash: 'forwarded-agent-content-hash',
+        bytes: 120,
+        truncated: false,
+      },
+    ])
+    requestContentApi.getMemberRequestContentAlerts.mockResolvedValue([])
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <QueryClientProvider client={client}>
+        <RequestContents
+          range={{ start: 1_789_500_000, end: 1_789_700_000 }}
+          members={[]}
+        />
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View request content' })
+    )
+
+    expect(screen.queryByText(/Agent d47eb9f2-bcfd-4c5c-a803/)).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('Conversation content unavailable')
+    ).toBeInTheDocument()
+  })
 })

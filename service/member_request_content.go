@@ -84,20 +84,47 @@ func CaptureMemberRequestContent(ctx context.Context, userID int, username, requ
 func memberRequestContentOnly(content string) string {
 	var value any
 	if common.Unmarshal([]byte(content), &value) != nil {
-		return stripHarnessRuntimeContext(strings.TrimSpace(content))
+		text := stripHarnessRuntimeContext(strings.TrimSpace(content))
+		if isInternalHarnessMessage(text) {
+			return ""
+		}
+		return text
 	}
 	if body, ok := value.(map[string]any); ok {
+		if role, roleOK := body["role"].(string); roleOK {
+			if !strings.EqualFold(role, "user") && !strings.EqualFold(role, "request") {
+				return ""
+			}
+			text := stripHarnessRuntimeContext(memberValueText(body["content"]))
+			if isInternalHarnessMessage(text) {
+				return ""
+			}
+			if text != "" {
+				if encoded, err := common.Marshal(map[string]any{"role": "user", "content": text}); err == nil {
+					return string(encoded)
+				}
+				return text
+			}
+			return ""
+		}
+		hasMessageContainer := false
 		for _, key := range []string{"messages", "input", "contents"} {
+			if _, exists := body[key]; exists {
+				hasMessageContainer = true
+			}
 			if messages := memberMessages(body[key]); len(messages) > 0 {
 				if encoded, err := common.Marshal(map[string]any{"role": "user", "content": messages[len(messages)-1]}); err == nil {
 					return string(encoded)
 				}
 			}
 		}
+		if hasMessageContainer {
+			return ""
+		}
 		for _, key := range []string{"prompt", "query", "text", "input"} {
 			if text, ok := body[key].(string); ok && strings.TrimSpace(text) != "" {
 				cleaned := stripHarnessRuntimeContext(text)
-				if strings.TrimSpace(cleaned) == "" {
+				if strings.TrimSpace(cleaned) == "" || isInternalHarnessMessage(cleaned) {
 					return ""
 				}
 				if encoded, err := common.Marshal(map[string]any{"role": "user", "content": cleaned}); err == nil {
@@ -115,7 +142,7 @@ func memberMessages(value any) []string {
 	if !ok {
 		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
 			text = stripHarnessRuntimeContext(text)
-			if text == "" {
+			if text == "" || isInternalHarnessMessage(text) {
 				return nil
 			}
 			return []string{text}
@@ -141,11 +168,22 @@ func memberMessages(value any) []string {
 			}
 		}
 		text = stripHarnessRuntimeContext(strings.TrimSpace(text))
-		if text != "" {
+		if text != "" && !isInternalHarnessMessage(text) {
 			result = append(result, text)
 		}
 	}
 	return result
+}
+
+func isInternalHarnessMessage(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return false
+	}
+	backgroundReport := (strings.HasPrefix(text, "background subagent") || strings.HasPrefix(text, "background agent")) &&
+		strings.Contains(text, "finished") && strings.Contains(text, "no further work")
+	agentForwardedMessage := strings.HasPrefix(text, "agent ") && strings.Contains(text, " sent a message:")
+	return backgroundReport || agentForwardedMessage || strings.Contains(text, "findings sent to parent agent") || strings.HasPrefix(text, "key conclusion:")
 }
 
 func memberValueText(value any) string {
@@ -375,7 +413,7 @@ func normalizeStoredMemberRequestContent(content string) string {
 	}
 	if common.Unmarshal([]byte(content), &message) == nil && message.Content != "" {
 		message.Content = stripHarnessRuntimeContext(message.Content)
-		if strings.TrimSpace(message.Content) == "" {
+		if strings.TrimSpace(message.Content) == "" || isInternalHarnessMessage(message.Content) {
 			return ""
 		}
 		if message.Role == "" {
@@ -385,7 +423,11 @@ func normalizeStoredMemberRequestContent(content string) string {
 			return string(encoded)
 		}
 	}
-	return stripHarnessRuntimeContext(strings.TrimSpace(content))
+	cleaned := stripHarnessRuntimeContext(strings.TrimSpace(content))
+	if isInternalHarnessMessage(cleaned) {
+		return ""
+	}
+	return cleaned
 }
 
 func ListMemberRequestContentAlerts(ctx context.Context, userID int, start, end int64, limit int) ([]model.MemberRequestContentAlert, error) {
