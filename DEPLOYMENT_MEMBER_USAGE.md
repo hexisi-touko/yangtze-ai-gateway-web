@@ -1,6 +1,6 @@
 # 管理端部署说明
 
-本次发布分支：`codex/local-features-20261004`。部署前请先确认同学拉取的是这个分支，而不是只有 README 的 `main`。
+稳定源码分支：`main`。管理员业务版本标签：`admin-v1.0.0` 和 `admin-v1.0.1`；后者包含本次请求正文、月度文档和更新日志修复。旧开发分支已归并，不能继续把旧分支名作为部署入口。
 
 本仓库保存完整的 new-api 管理端源码，包括 Go 后端、React 管理页面、数据模型、路由、成员使用分析和 Docker 构建文件。云服务器必须从仓库源码构建镜像，不能继续直接使用官方 `calciumion/new-api:latest` 镜像。
 
@@ -22,8 +22,8 @@ docker compose logs -f new-api
 
 ```bash
 git fetch origin
-git checkout codex/local-features-20261004
-git pull --ff-only origin codex/local-features-20261004
+git checkout main
+git pull --ff-only origin main
 docker compose build --no-cache new-api
 docker compose up -d new-api
 docker compose logs --tail=200 new-api
@@ -36,6 +36,10 @@ docker compose logs --tail=200 new-api
 - 检查数据库自动迁移是否创建成员分析、请求内容、工作会话和价值核算相关表。
 - 检查 `docker compose ps` 和 `docker compose logs --tail=200 new-api`，确认没有迁移或数据库连接错误。
 - 客户端热更新发布后，确认 `GET /api/client-releases/latest` 能从正式 HTTPS 域名访问；下载地址不能指向 `127.0.0.1` 或本地磁盘路径。
-- 成员请求内容只在管理员页面查询；请求体会经过运行时上下文清理和长度限制，月度归档清理任务按部署配置执行。
+- 成员请求内容只在管理员页面查询；本版本默认完整保存，配置正数 `MEMBER_REQUEST_CONTENT_MAX_BYTES` 才限制长度。月度正文按成员压缩归档，导出带北京时间日期的 HTML 文档。
+- 数据库和正文归档目录必须一起持久化和备份。默认正文目录在 `/data/member-request-archives`，可用 `MEMBER_REQUEST_ARCHIVE_DIR` 指定。
+- 旧月报在管理员页面补建正文时只能恢复仍保存在数据库中的内容，不能恢复未采集或已清理的正文。
+
+现有服务器切换前必须备份实际 Compose 配置、数据库、归档目录和旧镜像；不要直接使用示例配置覆盖生产密钥或数据库卷。以上是后续部署步骤，本次仓库整理未执行云端部署。
 
 云服务器上的客户端地址应使用正式 HTTPS 域名；本地测试客户端中的 `127.0.0.1:3000` 配置不属于本仓库。

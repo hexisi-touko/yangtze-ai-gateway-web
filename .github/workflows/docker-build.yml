@@ -5,6 +5,7 @@ on:
     tags:
       - '*'
       - '!nightly*'
+      - '!admin-v*' # Lab business tags are source records, not upstream image releases.
   workflow_dispatch:
     inputs:
       tag:

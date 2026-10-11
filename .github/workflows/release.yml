@@ -12,6 +12,7 @@ on:
     tags:
       - '*'
       - '!*-alpha*'
+      - '!admin-v*' # Lab business tags do not publish upstream binaries.
 
 jobs:
   linux:

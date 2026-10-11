@@ -1,3 +1,24 @@
+# 长江 AI 网关 · New API 管理员端
+
+本仓库保存完整的 Go 后端和 React 管理端源码。日常拉取使用 `main`；业务版本使用标签，不复制多个版本目录。客户端源码在独立仓库维护。
+
+| 业务版本 | 标签 | 内容 |
+| --- | --- | --- |
+| 初始版 | `admin-v1.0.0` | 原管理端与同学提供的云端修复补丁 |
+| 第二版 | `admin-v1.0.1` | 请求正文修复、成员月度文档、管理员更新日志 |
+
+两个版本均为源码版本记录，不表示云服务器已经切换。`main` 在第二版基础上包含仓库规范与验证配置。
+
+- [管理员端更新日志](docs/ADMIN_CHANGELOG.md)
+- [分支管理与提交流程](docs/REPOSITORY_WORKFLOW.md)
+- [版本与交接说明](docs/ADMIN_VERSIONING.md)
+- [第二版本地验证记录](docs/ADMIN_V101_VALIDATION.md)
+- [完整管理端构建说明](DEPLOYMENT_MEMBER_USAGE.md)
+
+部署本仓库功能需从本仓库源码构建镜像，不能换用上游 `latest` 镜像。数据库、密钥、成员正文、归档、安装包、缓存均不提交。
+
+以下保留 New API 上游项目说明与版权信息。
+
 <div align="center">
 
 ![new-api](/web/public/logo.png)

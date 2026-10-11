@@ -10,3 +10,19 @@ docs
 /web/node_modules
 /web/dist
 !THIRD-PARTY-LICENSES.md
+
+# Local data and validation artifacts are not build inputs.
+.env
+.env.*
+!.env.example
+.tmp
+.dev-cache
+node_modules
+data
+logs
+member-request-archives
+*.db
+*.db-shm
+*.db-wal
+*.exe
+*.log
