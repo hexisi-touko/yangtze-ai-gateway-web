@@ -109,7 +109,45 @@ func ListMemberRequestContent(ctx context.Context, userID int, start, end int64,
 		query = query.Where("created_at < ?", end)
 	}
 	rows := make([]MemberRequestContent, 0)
-	return rows, query.Find(&rows).Error
+	err := query.Find(&rows).Error
+	return rows, err
+}
+
+func ListMemberRequestContentPage(ctx context.Context, userID int, start, end, beforeID int64, limit int) ([]MemberRequestContent, error) {
+	query := DB.WithContext(ctx).Where("created_at >= ? AND created_at < ?", start, end).
+		Order("id desc").Limit(limit + 1)
+	if userID > 0 {
+		query = query.Where("user_id = ?", userID)
+	}
+	if beforeID > 0 {
+		query = query.Where("id < ?", beforeID)
+	}
+	rows := make([]MemberRequestContent, 0)
+	err := query.Find(&rows).Error
+	return rows, err
+}
+
+// A high-water mark prevents later writes from changing an archive in progress.
+func MemberRequestArchiveBounds(ctx context.Context, userID int, start, end int64) (int64, int64, error) {
+	var result struct {
+		Count int64
+		MaxID int64
+	}
+	err := DB.WithContext(ctx).Model(&MemberRequestContent{}).
+		Select("COUNT(*) AS count, COALESCE(MAX(id), 0) AS max_id").
+		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, start, end).Scan(&result).Error
+	return result.Count, result.MaxID, err
+}
+
+func ReadMemberRequestArchiveBatch(ctx context.Context, userID int, start, end, maxID, afterTime, afterID int64) ([]MemberRequestContent, error) {
+	rows := make([]MemberRequestContent, 0)
+	query := DB.WithContext(ctx).Where("user_id = ? AND created_at >= ? AND created_at < ? AND id <= ?", userID, start, end, maxID).
+		Order("created_at asc, id asc").Limit(200)
+	if afterID > 0 {
+		query = query.Where("created_at > ? OR (created_at = ? AND id > ?)", afterTime, afterTime, afterID)
+	}
+	err := query.Find(&rows).Error
+	return rows, err
 }
 
 func ListRepeatedMemberRequestContent(ctx context.Context, userID int, start, end int64, threshold, limit int) ([]MemberRequestContentAlert, error) {

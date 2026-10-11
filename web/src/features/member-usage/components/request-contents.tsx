@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { Eye, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
@@ -17,7 +17,10 @@ import {
 } from '@/components/ui/table'
 import { formatTimestamp } from '@/lib/format'
 
-import { getMemberRequestContentAlerts, getMemberRequestContents } from '../api'
+import {
+  getMemberRequestContentAlerts,
+  getMemberRequestContentsPage,
+} from '../api'
 import type {
   MemberRequestContent,
   MemberRequestContentAlert,
@@ -32,20 +35,26 @@ export function RequestContents(props: {
   const [userID, setUserID] = useState('')
   const [selected, setSelected] = useState<MemberRequestContent | null>(null)
   const parsedUserID = Number(userID)
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: [
       'member-request-contents',
       props.range?.start,
       props.range?.end,
       parsedUserID || 0,
     ],
-    queryFn: () =>
-      getMemberRequestContents({
-        start: props.range?.start,
-        end: props.range?.end,
+    initialPageParam: 0,
+    getNextPageParam: (
+      lastPage: Awaited<ReturnType<typeof getMemberRequestContentsPage>>
+    ) => (lastPage.has_more ? lastPage.next_cursor : undefined),
+    queryFn: ({ pageParam }) => {
+      if (!props.range) throw new Error('member_usage_invalid_range')
+      return getMemberRequestContentsPage({
+        start: props.range.start,
+        end: props.range.end,
         user_id: parsedUserID > 0 ? parsedUserID : undefined,
-        limit: 1000,
-      }),
+        before_id: pageParam,
+      })
+    },
     enabled: !!props.range,
     retry: false,
   })
@@ -121,11 +130,22 @@ export function RequestContents(props: {
       )}
       {query.data && (
         <>
-          <MemberRequestTree items={query.data} onSelect={setSelected} />
-          {query.data.length >= 1000 && (
-            <p className='text-muted-foreground text-xs'>
-              {t('request_content_limit_notice')}
-            </p>
+          <MemberRequestTree
+            items={query.data.pages.flatMap((page) => page.items)}
+            onSelect={setSelected}
+          />
+          {query.hasNextPage && (
+            <Button
+              variant='outline'
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {t(
+                query.isFetchingNextPage
+                  ? 'Loading...'
+                  : 'Load earlier requests'
+              )}
+            </Button>
           )}
         </>
       )}
@@ -144,6 +164,13 @@ export function RequestContents(props: {
               {t('Request hash')}: {selected.content_hash} · {t('Request ID')}:{' '}
               {selected.request_id || '-'}
             </p>
+            {selected.truncated && (
+              <p role='status' className='text-muted-foreground text-sm'>
+                {t(
+                  'This historical request was truncated when captured; missing text cannot be restored.'
+                )}
+              </p>
+            )}
             <RequestConversation content={selected.content} />
           </div>
         </Dialog>
@@ -262,14 +289,13 @@ function extractConversation(content: string): ConversationMessage[] {
 }
 
 function isInternalHarnessMessage(text: string): boolean {
-  const normalized = text.trim()
+  const normalized = text.trim().replaceAll(/\s+/g, ' ')
   return (
-    /^background\s+(?:subagent|agent)\b.*\bfinished\b.*\bno further work\b/i.test(
+    /^(?:background (?:subagent|agent) [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} finished and will do no further work\b|agent [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} sent a message:)/i.test(
       normalized
     ) ||
-    /^agent\s+[0-9a-f-]{16,}\s+sent\s+a\s+message:/i.test(normalized) ||
-    /\bfindings\s+sent\s+to\s+parent\s+agent\b/i.test(normalized) ||
-    /^key\s+conclusion\s*:/i.test(normalized)
+    normalized ===
+      'You are repeating the exact same tool call with identical arguments. Carefully analyze the previous result before calling again; if the task is not complete, try a different approach or different arguments instead of repeating the call.'
   )
 }
 
@@ -288,15 +314,8 @@ function RequestConversation({ content }: { content: string }) {
     ) {
       return false
     }
-    if (
-      /current runtime context|current dsh file policy|approval policy\s*:\s*ask|workspace-write|operations that require approval/i.test(
-        message.text
-      )
-    ) {
-      return false
-    }
     if (isInternalHarnessMessage(message.text)) return false
-    return !/^\s*\[(model changed|system|developer|tool)\b/i.test(message.text)
+    return true
   })
   // Each stored body may include the complete conversation history. The last
   // visible member turn is the request associated with the selected log row;
@@ -320,7 +339,7 @@ function RequestConversation({ content }: { content: string }) {
                 className='space-y-1 px-3 py-3'
               >
                 <div className='text-muted-foreground text-xs'>
-                  {message.role}
+                  {t('Member request')}
                 </div>
                 <div className='text-sm break-words whitespace-pre-wrap'>
                   {message.text}

@@ -284,6 +284,7 @@ func SetApiRouter(router *gin.Engine) {
 		workSessionRoute.POST("/:session_id/stop", controller.StopMemberWorkSession)
 
 		memberUsageRoute := apiRouter.Group("/member-usage")
+		apiRouter.GET("/admin-updates", middleware.DisableCache(), middleware.AdminAuth(), controller.GetAdminUpdates)
 		memberUsageRoute.Use(middleware.DisableCache(), middleware.AdminAuth())
 		{
 			memberUsageRoute.GET("/summary", controller.GetMemberUsageSummary)
@@ -306,7 +307,11 @@ func SetApiRouter(router *gin.Engine) {
 			memberUsageRoute.GET("/reports", controller.ListMemberUsageReports)
 			memberUsageRoute.POST("/reports", middleware.CriticalRateLimit(), controller.PostMemberUsageReport)
 			memberUsageRoute.GET("/reports/:id", controller.GetMemberUsageReport)
+			memberUsageRoute.GET("/reports/:id/requests", controller.GetMemberReportRequestArchive)
+			memberUsageRoute.POST("/reports/:id/requests", middleware.CriticalRateLimit(), controller.RebuildMemberReportRequestArchive)
+			memberUsageRoute.GET("/reports/:id/members/:user_id/document", controller.ExportMemberReportDocument)
 			memberUsageRoute.GET("/request-contents", controller.GetMemberRequestContents)
+			memberUsageRoute.GET("/request-contents/page", controller.GetMemberRequestContentsPage)
 			memberUsageRoute.GET("/request-content-alerts", controller.GetMemberRequestContentAlerts)
 		}
 

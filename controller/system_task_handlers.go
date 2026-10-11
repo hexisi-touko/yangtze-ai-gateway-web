@@ -110,7 +110,7 @@ func (memberUsageDailyReportHandler) Run(ctx context.Context, task *model.System
 	oldContentDeleted := int64(0)
 	if maxRetention > 0 {
 		cutoff, _ := service.PreviousLocalDayRange(maxRetention)
-		oldContentDeleted, err = model.DeleteAllMemberRequestContentBefore(ctx, cutoff)
+		oldContentDeleted, err = service.CleanupArchivedRequestContentBefore(ctx, cutoff)
 		if err != nil {
 			finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 			return

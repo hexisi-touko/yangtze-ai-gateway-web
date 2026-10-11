@@ -19,8 +19,8 @@ func PreviousLocalDayRange(offset int) (int64, int64) {
 	if offset < 1 {
 		offset = 1
 	}
-	now := time.Now().In(time.Local)
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -offset)
+	now := time.Now().In(memberReportTimezone)
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, memberReportTimezone).AddDate(0, 0, -offset)
 	return day.Unix(), day.AddDate(0, 0, 1).Unix()
 }
 
@@ -31,8 +31,8 @@ func PreviousLocalMonthRange(offset int) (int64, int64) {
 	if offset < 1 {
 		offset = 1
 	}
-	now := time.Now().In(time.Local)
-	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local).AddDate(0, -offset, 0)
+	now := time.Now().In(memberReportTimezone)
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, memberReportTimezone).AddDate(0, -offset, 0)
 	return first.Unix(), first.AddDate(0, 1, 0).Unix()
 }
 
@@ -57,9 +57,12 @@ func ArchiveDailyMemberUsageReport(ctx context.Context, start, end int64) (*mode
 func ArchiveMonthlyMemberUsageReport(ctx context.Context, start, end int64) (*model.MemberUsageReport, error) {
 	var existing model.MemberUsageReport
 	if err := model.DB.WithContext(ctx).Where("start_time = ? AND end_time = ?", start, end).Order("id desc").First(&existing).Error; err == nil {
+		if _, err := EnsureMemberRequestArchive(ctx, &existing); err != nil {
+			return nil, err
+		}
 		return &existing, nil
 	}
-	month := time.Unix(start, 0).In(time.Local).Format("2006-01")
+	month := time.Unix(start, 0).In(memberReportTimezone).Format("2006-01")
 	report := &model.MemberUsageReport{
 		Title:     "成员使用月报 " + month,
 		Note:      "系统自动生成；汇总上月成员请求频率、Token、错误率、缓存与官方参考价值。归档完成后按月清理 Token 使用量最低的 5 名成员的请求正文。",
@@ -87,7 +90,11 @@ func CleanupLowUsageRequestContent(ctx context.Context, start, end int64) (int64
 			ids = append(ids, member.ID)
 		}
 	}
-	return model.DeleteMemberRequestContentForUsers(ctx, ids, start, end)
+	var report model.MemberUsageReport
+	if err := model.DB.WithContext(ctx).Where("start_time = ? AND end_time = ?", start, end).Order("id desc").First(&report).Error; err != nil {
+		return 0, err
+	}
+	return CleanupArchivedMemberRequestContent(ctx, &report, ids)
 }
 
 type MemberUsageMetrics struct {
@@ -478,6 +485,15 @@ func ArchiveMemberUsageReport(ctx context.Context, report *model.MemberUsageRepo
 		return err
 	}
 	report.ValueSnapshot = string(valueData)
+	if report.EndTime-report.StartTime >= 27*86400 {
+		if err := buildMemberRequestArchive(ctx, report, false); err != nil {
+			return err
+		}
+	}
 	report.ID, report.CreatedAt, report.Snapshot = 0, time.Now().Unix(), string(data)
-	return model.SaveMemberUsageReport(ctx, report)
+	if err := model.SaveMemberUsageReport(ctx, report); err != nil {
+		discardMemberRequestArchive(report)
+		return err
+	}
+	return nil
 }

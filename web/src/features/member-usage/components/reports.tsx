@@ -16,10 +16,13 @@ import { formatTimestamp } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
+  type RequestArchive,
   archiveUsageReport,
   getUsageReport,
   getUsageReports,
   normalizeUsageSummary,
+  downloadMemberDocument,
+  rebuildRequestArchive,
 } from '../api'
 import { exportUsageJSON } from '../lib'
 import type { UsageReport, UsageSummary } from '../types'
@@ -117,6 +120,31 @@ function ReportDetail(props: { id: number; onClose: () => void }) {
     queryKey: ['member-usage-report', props.id],
     queryFn: () => getUsageReport(props.id),
   })
+  const client = useQueryClient()
+  const rebuild = useMutation({
+    mutationFn: () => rebuildRequestArchive(props.id),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ['member-usage-report', props.id],
+      })
+    },
+    onError: handleServerError,
+  })
+  const download = useMutation({
+    mutationFn: (userID: number) => downloadMemberDocument(props.id, userID),
+    onError: handleServerError,
+  })
+  let archive: RequestArchive | null = null
+  if (query.data?.request_archive) {
+    try {
+      const parsed = JSON.parse(query.data.request_archive) as RequestArchive
+      if (parsed.version === 1 && Array.isArray(parsed.members)) {
+        archive = parsed
+      }
+    } catch {
+      archive = null
+    }
+  }
   let snapshot: UsageSummary | null = null
   if (query.data?.snapshot) {
     try {
@@ -165,6 +193,74 @@ function ReportDetail(props: { id: number; onClose: () => void }) {
             {query.data.note || t('No administrator summary')}
           </p>
           <MonthlyMemberUsage members={historicalSummary.members ?? []} />
+          <section className='space-y-3 border-t pt-4'>
+            <h3 className='text-sm font-medium'>
+              {t('Member monthly request documents')}
+            </h3>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Documents group captured member requests by date in Beijing time. AI replies are not included.'
+              )}
+            </p>
+            {!archive && (
+              <div className='space-y-2'>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'This older report contains statistics only. Rebuild documents from requests that still exist; deleted text cannot be recovered.'
+                  )}
+                </p>
+                <Button
+                  variant='outline'
+                  disabled={rebuild.isPending}
+                  onClick={() => rebuild.mutate()}
+                >
+                  {t(
+                    rebuild.isPending
+                      ? 'Loading...'
+                      : 'Rebuild request documents'
+                  )}
+                </Button>
+              </div>
+            )}
+            {archive?.rebuilt && (
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Rebuilt from remaining historical records; this is not a guarantee of complete conversation history.'
+                )}
+              </p>
+            )}
+            {archive?.members.length === 0 && (
+              <p className='text-muted-foreground text-sm'>
+                {t('No captured requests in this archive')}
+              </p>
+            )}
+            <div className='divide-y'>
+              {archive?.members.map((member) => (
+                <div
+                  key={member.user_id}
+                  className='flex flex-wrap items-center justify-between gap-3 py-3'
+                >
+                  <div>
+                    <div className='text-sm font-medium'>
+                      {member.username || `#${member.user_id}`}
+                    </div>
+                    <div className='text-muted-foreground text-xs'>
+                      {member.records.toLocaleString()} {t('Requests')}
+                    </div>
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={download.isPending}
+                    onClick={() => download.mutate(member.user_id)}
+                  >
+                    <Download />
+                    {t('Export member document')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </section>
           <p className='text-muted-foreground text-xs'>
             {t('Archived at')}: {formatTimestamp(query.data.created_at)} ·{' '}
             {t('Administrator')} #{query.data.created_by}

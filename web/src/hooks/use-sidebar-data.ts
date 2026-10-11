@@ -22,6 +22,7 @@ import {
   Box,
   // CreditCard,
   FileText,
+  History,
   // FlaskConical,
   Key,
   LayoutDashboard,
@@ -147,6 +148,12 @@ export function useSidebarData(): SidebarData {
             title: t('Client releases'),
             url: '/client-releases',
             icon: PackageCheck,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Admin update history'),
+            url: '/admin-updates',
+            icon: History,
             requiredRole: ROLE.ADMIN,
           },
           {

@@ -18,15 +18,16 @@ type MemberUsageProfile struct {
 }
 
 type MemberUsageReport struct {
-	ID            int    `json:"id" gorm:"primaryKey"`
-	Title         string `json:"title" gorm:"size:120"`
-	Note          string `json:"note" gorm:"type:text"`
-	StartTime     int64  `json:"start_time"`
-	EndTime       int64  `json:"end_time"`
-	CreatedAt     int64  `json:"created_at" gorm:"index"`
-	CreatedBy     int    `json:"created_by"`
-	Snapshot      string `json:"snapshot,omitempty" gorm:"type:text"`
-	ValueSnapshot string `json:"value_snapshot,omitempty" gorm:"type:text"`
+	ID             int    `json:"id" gorm:"primaryKey"`
+	Title          string `json:"title" gorm:"size:120"`
+	Note           string `json:"note" gorm:"type:text"`
+	StartTime      int64  `json:"start_time"`
+	EndTime        int64  `json:"end_time"`
+	CreatedAt      int64  `json:"created_at" gorm:"index"`
+	CreatedBy      int    `json:"created_by"`
+	Snapshot       string `json:"snapshot,omitempty" gorm:"type:text"`
+	ValueSnapshot  string `json:"value_snapshot,omitempty" gorm:"type:text"`
+	RequestArchive string `json:"request_archive,omitempty" gorm:"type:text"`
 }
 
 type UsageMemberIdentity struct {
@@ -104,7 +105,7 @@ func SaveMemberUsageReport(ctx context.Context, report *MemberUsageReport) error
 
 func ListMemberUsageReports(ctx context.Context) ([]MemberUsageReport, error) {
 	reports := make([]MemberUsageReport, 0)
-	err := DB.WithContext(ctx).Omit("snapshot", "value_snapshot").Order("id desc").Limit(100).Find(&reports).Error
+	err := DB.WithContext(ctx).Omit("snapshot", "value_snapshot", "request_archive").Order("id desc").Limit(100).Find(&reports).Error
 	return reports, err
 }
 

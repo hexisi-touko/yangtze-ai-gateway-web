@@ -16,9 +16,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// A member's current prompt can include a source file or an error trace. Keep
-// a practical safety ceiling, but do not truncate ordinary development tasks.
-const defaultMemberRequestContentMaxBytes = 512 * 1024
+// Preserve complete member text unless the administrator explicitly sets a cap.
+const defaultMemberRequestContentMaxBytes = 0
 
 var workspacePathPatterns = []*regexp.Regexp{
 	regexp.MustCompile("(?im)(?:session\\s+)?workspace(?:\\s+(?:root|path|directory))?\\s*(?:is|:|=)\\s*[\\\"'`]?((?:[A-Za-z]:[\\\\/]|/)[^\\\"'`\\r\\n]+)"),
@@ -33,9 +32,6 @@ func CaptureMemberRequestContent(ctx context.Context, userID int, username, requ
 	}
 	copyOfRaw := append([]byte(nil), raw...)
 	maxBytes := common.GetEnvOrDefault("MEMBER_REQUEST_CONTENT_MAX_BYTES", defaultMemberRequestContentMaxBytes)
-	if maxBytes <= 0 {
-		maxBytes = defaultMemberRequestContentMaxBytes
-	}
 	// Redact the complete JSON before extracting the final member turn. Parsing
 	// an already-truncated payload would lose the message array entirely.
 	redacted := redactRequestBody(copyOfRaw)
@@ -121,7 +117,7 @@ func memberRequestContentOnly(content string) string {
 		if hasMessageContainer {
 			return ""
 		}
-		for _, key := range []string{"prompt", "query", "text", "input"} {
+		for _, key := range []string{"prompt", "query", "text", "input", "content"} {
 			if text, ok := body[key].(string); ok && strings.TrimSpace(text) != "" {
 				cleaned := stripHarnessRuntimeContext(text)
 				if strings.TrimSpace(cleaned) == "" || isInternalHarnessMessage(cleaned) {
@@ -176,15 +172,14 @@ func memberMessages(value any) []string {
 }
 
 func isInternalHarnessMessage(text string) bool {
-	text = strings.ToLower(strings.TrimSpace(text))
-	if text == "" {
-		return false
-	}
-	backgroundReport := (strings.HasPrefix(text, "background subagent") || strings.HasPrefix(text, "background agent")) &&
-		strings.Contains(text, "finished") && strings.Contains(text, "no further work")
-	agentForwardedMessage := strings.HasPrefix(text, "agent ") && strings.Contains(text, " sent a message:")
-	return backgroundReport || agentForwardedMessage || strings.Contains(text, "findings sent to parent agent") || strings.HasPrefix(text, "key conclusion:")
+	normalized := strings.Join(strings.Fields(text), " ")
+	return internalHarnessMessagePattern.MatchString(normalized) || normalized == repeatedToolCallReminder
 }
+
+// Match complete runtime envelopes, not ordinary English conclusions or quoted logs.
+var internalHarnessMessagePattern = regexp.MustCompile(`(?i)^(?:background (?:subagent|agent) [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} finished and will do no further work\b|agent [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} sent a message:)`)
+
+const repeatedToolCallReminder = "You are repeating the exact same tool call with identical arguments. Carefully analyze the previous result before calling again; if the task is not complete, try a different approach or different arguments instead of repeating the call."
 
 func memberValueText(value any) string {
 	if text, ok := value.(string); ok {
@@ -289,31 +284,22 @@ func stripHarnessRuntimeContext(text string) string {
 	// member's input. Remove these blocks before the content reaches storage.
 	// They contain system prompts, skill manifests and local policy text rather
 	// than the member's request.
+	hadRuntimeBlock := false
 	for _, pattern := range harnessRuntimeBlockPatterns {
+		hadRuntimeBlock = hadRuntimeBlock || pattern.MatchString(text)
 		text = pattern.ReplaceAllString(text, "")
 	}
 	lower := strings.ToLower(text)
 	// The harness places the actual turn after a labelled user message. Keep
 	// only that suffix when present.
-	for _, marker := range []string{"\nuser message:", "\nuser request:", "\nmember message:", "\nmember request:"} {
-		if index := strings.LastIndex(lower, marker); index >= 0 {
-			return strings.TrimSpace(text[index+len(marker):])
+	if hadRuntimeBlock {
+		for _, marker := range []string{"\nuser message:", "\nuser request:", "\nmember message:", "\nmember request:"} {
+			if index := strings.LastIndex(lower, marker); index >= 0 {
+				return strings.TrimSpace(text[index+len(marker):])
+			}
 		}
 	}
-	lines := strings.Split(text, "\n")
-	filtered := lines[:0]
-	for _, line := range lines {
-		lineLower := strings.ToLower(line)
-		if strings.Contains(lineLower, "current runtime context") ||
-			strings.Contains(lineLower, "dsh file policy") ||
-			strings.Contains(lineLower, "approval policy") ||
-			strings.Contains(lineLower, "workspace-write") ||
-			strings.Contains(lineLower, "operations that require approval") {
-			continue
-		}
-		filtered = append(filtered, line)
-	}
-	return strings.TrimSpace(strings.Join(filtered, "\n"))
+	return strings.TrimSpace(text)
 }
 
 var harnessRuntimeBlockPatterns = []*regexp.Regexp{
@@ -340,7 +326,7 @@ func redactRequestBody(raw []byte) string {
 }
 
 func truncateMemberRequestText(text string, maxBytes int) (string, bool) {
-	if len(text) <= maxBytes {
+	if maxBytes <= 0 || len(text) <= maxBytes {
 		return text, false
 	}
 	for maxBytes > 0 && !utf8.RuneStart(text[maxBytes]) {
@@ -406,28 +392,42 @@ func ListMemberRequestContent(ctx context.Context, userID int, start, end int64,
 	return cleaned, nil
 }
 
+type MemberRequestContentPage struct {
+	Items      []model.MemberRequestContent `json:"items"`
+	NextCursor int64                        `json:"next_cursor"`
+	HasMore    bool                         `json:"has_more"`
+}
+
+func ListMemberRequestContentPage(ctx context.Context, userID int, start, end, beforeID int64, limit int) (*MemberRequestContentPage, error) {
+	if err := ValidateMemberUsageRange(start, end); err != nil {
+		return nil, err
+	}
+	if beforeID < 0 || userID < 0 {
+		return nil, errors.New("member_usage_invalid_range")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	rows, err := model.ListMemberRequestContentPage(ctx, userID, start, end, beforeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	page := &MemberRequestContentPage{Items: []model.MemberRequestContent{}, HasMore: len(rows) > limit}
+	if page.HasMore {
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		page.NextCursor = row.ID
+		row.Content = normalizeStoredMemberRequestContent(row.Content)
+		if row.Content != "" {
+			page.Items = append(page.Items, row)
+		}
+	}
+	return page, nil
+}
+
 func normalizeStoredMemberRequestContent(content string) string {
-	var message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	if common.Unmarshal([]byte(content), &message) == nil && message.Content != "" {
-		message.Content = stripHarnessRuntimeContext(message.Content)
-		if strings.TrimSpace(message.Content) == "" || isInternalHarnessMessage(message.Content) {
-			return ""
-		}
-		if message.Role == "" {
-			message.Role = "user"
-		}
-		if encoded, err := common.Marshal(message); err == nil {
-			return string(encoded)
-		}
-	}
-	cleaned := stripHarnessRuntimeContext(strings.TrimSpace(content))
-	if isInternalHarnessMessage(cleaned) {
-		return ""
-	}
-	return cleaned
+	return memberRequestContentOnly(content)
 }
 
 func ListMemberRequestContentAlerts(ctx context.Context, userID int, start, end int64, limit int) ([]model.MemberRequestContentAlert, error) {

@@ -16,7 +16,14 @@ const requestContentApi = vi.hoisted(() => ({
   getMemberRequestContentAlerts: vi.fn(),
 }))
 
-vi.mock('../api', () => requestContentApi)
+vi.mock('../api', () => ({
+  ...requestContentApi,
+  getMemberRequestContentsPage: async (params: unknown) => ({
+    items: await requestContentApi.getMemberRequestContents(params),
+    has_more: false,
+    next_cursor: 0,
+  }),
+}))
 
 function member(overrides: Partial<UsageMember> = {}): UsageMember {
   return {
@@ -199,10 +206,12 @@ describe('member usage', () => {
     )
 
     expect(
-      screen.queryByText(/Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005/)
+      screen.queryByText(
+        /Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005/
+      )
     ).not.toBeInTheDocument()
     expect(
-      await screen.findByText('Conversation content unavailable')
+      await screen.findByText('Conversation content hidden')
     ).toBeInTheDocument()
   })
 
@@ -242,9 +251,11 @@ describe('member usage', () => {
       await screen.findByRole('button', { name: 'View request content' })
     )
 
-    expect(screen.queryByText(/Agent d47eb9f2-bcfd-4c5c-a803/)).not.toBeInTheDocument()
     expect(
-      await screen.findByText('Conversation content unavailable')
+      screen.queryByText(/Agent d47eb9f2-bcfd-4c5c-a803/)
+    ).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('Conversation content hidden')
     ).toBeInTheDocument()
   })
 })

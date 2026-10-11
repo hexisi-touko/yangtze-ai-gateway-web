@@ -162,6 +162,69 @@ export async function getMemberRequestContents(input: {
   })
   return unwrap(res.data)
 }
+
+export async function getMemberRequestContentsPage(input: {
+  user_id?: number
+  start: number
+  end: number
+  before_id: number
+}): Promise<{
+  items: MemberRequestContent[]
+  next_cursor: number
+  has_more: boolean
+}> {
+  const res = await api.get('/api/member-usage/request-contents/page', {
+    params: input,
+  })
+  const page = unwrap<{
+    items: MemberRequestContent[]
+    next_cursor: number
+    has_more: boolean
+  }>(res.data)
+  if (
+    !Array.isArray(page.items) ||
+    !Number.isFinite(page.next_cursor) ||
+    typeof page.has_more !== 'boolean'
+  ) {
+    throw new Error('member_usage_unavailable')
+  }
+  return page
+}
+
+export interface RequestArchive {
+  version: number
+  rebuilt: boolean
+  timezone: string
+  members: Array<{
+    user_id: number
+    username: string
+    records: number
+    source_records: number
+  }>
+}
+
+export async function rebuildRequestArchive(
+  id: number
+): Promise<RequestArchive> {
+  const res = await api.post(`/api/member-usage/reports/${id}/requests`)
+  return unwrap(res.data)
+}
+
+export async function downloadMemberDocument(
+  reportID: number,
+  userID: number
+): Promise<void> {
+  const res = await api.get(
+    `/api/member-usage/reports/${reportID}/members/${userID}/document`,
+    { responseType: 'blob' }
+  )
+  const url = URL.createObjectURL(res.data as Blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `member-${userID}-report-${reportID}.html`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
 export async function getMemberRequestContentAlerts(input: {
   user_id?: number
   start: number

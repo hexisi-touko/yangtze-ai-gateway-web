@@ -2,7 +2,9 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -121,6 +123,7 @@ func PostMemberUsageReport(c *gin.Context) {
 	}
 	report.Snapshot = ""
 	report.ValueSnapshot = ""
+	report.RequestArchive = ""
 	common.ApiSuccess(c, report)
 }
 
@@ -160,6 +163,82 @@ func GetMemberRequestContents(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, contents)
+}
+
+func GetMemberRequestContentsPage(c *gin.Context) {
+	userID, _ := strconv.Atoi(c.Query("user_id"))
+	start, _ := strconv.ParseInt(c.Query("start"), 10, 64)
+	end, _ := strconv.ParseInt(c.Query("end"), 10, 64)
+	beforeID, _ := strconv.ParseInt(c.Query("before_id"), 10, 64)
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	page, err := service.ListMemberRequestContentPage(c.Request.Context(), userID, start, end, beforeID, limit)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, page)
+}
+
+func GetMemberReportRequestArchive(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		memberUsageError(c, errors.New("member_usage_not_found"))
+		return
+	}
+	report, err := model.GetMemberUsageReport(c.Request.Context(), id)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	archive, err := service.DecodeMemberRequestArchive(report)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, archive)
+}
+
+func RebuildMemberReportRequestArchive(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		memberUsageError(c, errors.New("member_usage_not_found"))
+		return
+	}
+	report, err := model.GetMemberUsageReport(c.Request.Context(), id)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	archive, err := service.EnsureMemberRequestArchive(c.Request.Context(), report)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	common.ApiSuccess(c, archive)
+}
+
+func ExportMemberReportDocument(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	userID, _ := strconv.Atoi(c.Param("user_id"))
+	if id <= 0 || userID <= 0 {
+		memberUsageError(c, errors.New("member_usage_not_found"))
+		return
+	}
+	report, err := model.GetMemberUsageReport(c.Request.Context(), id)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	// Finish and validate before sending a successful download response.
+	output, err := service.CreateMemberRequestDocumentFile(c.Request.Context(), report, userID)
+	if err != nil {
+		memberUsageError(c, err)
+		return
+	}
+	defer os.Remove(output)
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.FileAttachment(output, fmt.Sprintf("member-%d-report-%d.html", userID, id))
 }
 
 // GetMemberRequestContentAlerts returns repeated request fingerprints that

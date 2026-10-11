@@ -113,8 +113,8 @@ describe('non-profit value accounting', () => {
         }}
       />
     )
-    expect(screen.getByText('¥10.00')).toBeInTheDocument()
-    expect(screen.queryByText('Not calculated')).not.toBeInTheDocument()
+    expect(screen.getAllByText('¥10.00').length).toBeGreaterThan(0)
+    expect(screen.getByText('2 / 3')).toBeInTheDocument()
   })
   it('does not label missing usage data as a missing official price', () => {
     render(

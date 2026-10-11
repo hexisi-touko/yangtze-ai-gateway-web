@@ -70,6 +70,7 @@ export interface UsageReport {
   created_by: number
   snapshot?: string
   value_snapshot?: string
+  request_archive?: string
 }
 
 export interface MemberRequestContent {

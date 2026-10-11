@@ -110,7 +110,7 @@ func TestMemberRequestContentOnlySkipsInternalHarnessReports(t *testing.T) {
 }
 
 func TestMemberRequestContentOnlySkipsDirectInternalUserMessage(t *testing.T) {
-	content := memberRequestContentOnly(`{"role":"user","content":"Background subagent finished and will do no further work"}`)
+	content := memberRequestContentOnly(`{"role":"user","content":"Background subagent 6604a19b-7ac7-4bdf-857c-ec7483fdc005 finished and will do no further work"}`)
 
 	assert.Empty(t, content)
 }
@@ -136,4 +136,28 @@ func TestExtractMemberWorkspaceFromHarnessRuntimeContext(t *testing.T) {
 	raw := []byte(`{"input":[{"role":"system","content":"Current runtime context. The current session workspace: \"D:\\夏至\\Documents\\测试\"."},{"role":"user","content":[{"type":"input_text","text":"请检查项目"}]}]}`)
 
 	assert.Equal(t, `D:\夏至\Documents\测试`, ExtractMemberWorkspaceFromRequest(raw))
+}
+
+func TestMemberRequestPreservesNormalEnglishAndCode(t *testing.T) {
+	for _, text := range []string{"Key conclusion: the pump needs maintenance.", "Explain this log: Findings sent to parent agent", "Please explain workspace-write and approval policy.\nuser request:\nkeep this label"} {
+		body, err := common.Marshal(map[string]any{"role": "user", "content": text})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(body), memberRequestContentOnly(string(body)))
+	}
+}
+
+func TestMemberRequestSkipsReminderAndPreservesPreviousTurn(t *testing.T) {
+	body, err := common.Marshal(map[string]any{"input": []any{map[string]any{"role": "user", "content": "请修复这个错误"}, map[string]any{"role": "user", "content": repeatedToolCallReminder}}})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"role":"user","content":"请修复这个错误"}`, memberRequestContentOnly(string(body)))
+	assert.Empty(t, memberRequestContentOnly(repeatedToolCallReminder))
+}
+
+func TestMemberRequestDefaultPreservesLongTextAndLegacyPayload(t *testing.T) {
+	text := strings.Repeat("长正文", 200000) + "正文结尾"
+	full, truncated := truncateMemberRequestText(text, defaultMemberRequestContentMaxBytes)
+	assert.Equal(t, text, full)
+	assert.False(t, truncated)
+	assert.JSONEq(t, `{"role":"user","content":"这是真实请求"}`, normalizeStoredMemberRequestContent(`{"input":[{"role":"system","content":"内部说明"},{"role":"user","content":"这是真实请求"}]}`))
+	assert.JSONEq(t, `{"role":"user","content":"旧正文"}`, normalizeStoredMemberRequestContent(`{"content":"旧正文"}`))
 }
