@@ -66,6 +66,17 @@ func TestCaptureMemberRequestContentPersistsCurrentTurn(t *testing.T) {
 			require.NoError(t, common.Unmarshal([]byte(row.Content), &message))
 			assert.Equal(t, "user", message.Role)
 			assert.Equal(t, tt.want, message.Content)
+			rows, listErr := ListMemberRequestContent(context.Background(), 1, 0, 0, 10)
+			require.NoError(t, listErr)
+			var listed *model.MemberRequestContent
+			for i := range rows {
+				if rows[i].RequestID == tt.name {
+					listed = &rows[i]
+					break
+				}
+			}
+			require.NotNil(t, listed)
+			assert.Equal(t, tt.want, listed.ContentText)
 			assert.Equal(t, tt.truncated, row.Truncated)
 			assert.Equal(t, len(tt.raw), row.Bytes)
 			assert.NotContains(t, row.Content, "api_key")
@@ -160,4 +171,36 @@ func TestMemberRequestDefaultPreservesLongTextAndLegacyPayload(t *testing.T) {
 	assert.False(t, truncated)
 	assert.JSONEq(t, `{"role":"user","content":"这是真实请求"}`, normalizeStoredMemberRequestContent(`{"input":[{"role":"system","content":"内部说明"},{"role":"user","content":"这是真实请求"}]}`))
 	assert.JSONEq(t, `{"role":"user","content":"旧正文"}`, normalizeStoredMemberRequestContent(`{"content":"旧正文"}`))
+}
+
+func TestCaptureMemberRequestContentPreservesLongPlainText(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.MemberRequestContent{}))
+	previous := model.DB
+	model.DB = db
+	t.Cleanup(func() { model.DB = previous; _ = sqlDB.Close() })
+
+	long := strings.Repeat("这是一段需要完整保留的长请求。", 12000)
+	raw, err := common.Marshal(map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"role": "system", "content": "内部运行信息"},
+			map[string]any{"role": "user", "content": long},
+		},
+	})
+	require.NoError(t, err)
+	t.Setenv("MEMBER_REQUEST_CONTENT_MAX_BYTES", "0")
+	CaptureMemberRequestContent(context.Background(), 1, "成员甲", "long-request", "/v1/responses", "gpt-5.5", raw)
+
+	var row model.MemberRequestContent
+	require.NoError(t, db.Where("request_id = ?", "long-request").First(&row).Error)
+	rows, listErr := ListMemberRequestContent(context.Background(), 1, 0, 0, 10)
+	require.NoError(t, listErr)
+	require.Len(t, rows, 1)
+	assert.Equal(t, long, rows[0].ContentText)
+	assert.Equal(t, len(long), len(rows[0].ContentText))
 }

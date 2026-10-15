@@ -73,7 +73,7 @@ func TestAdminUpdatesAndArchiveRoutesRequireAdminAndExportOneMember(t *testing.T
 				assert.Contains(t, res.Header().Get("Content-Type"), "text/html")
 				assert.Contains(t, res.Body.String(), "成员请求正文")
 			} else if strings.HasSuffix(path, "admin-updates") {
-				assert.Contains(t, res.Body.String(), `"current_version":"1.0.1"`)
+				assert.Contains(t, res.Body.String(), `"current_version":"1.0.2"`)
 			}
 		}
 	}

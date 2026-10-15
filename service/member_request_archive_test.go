@@ -23,7 +23,9 @@ func memberArchiveFixture(t *testing.T) (*gorm.DB, *model.MemberUsageReport) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.MemberRequestContent{}, &model.MemberUsageReport{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.MemberRequestContent{}, &model.MemberUsageReport{}))
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "member-one", DisplayName: "成员甲显示名", Role: 1, Status: 1, AffCode: "archive-member-one"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 2, Username: "member-two", DisplayName: "成员乙显示名", Role: 1, Status: 1, AffCode: "archive-member-two"}).Error)
 	previous := model.DB
 	model.DB = db
 	t.Cleanup(func() { model.DB = previous; _ = sqlDB.Close() })
@@ -54,6 +56,7 @@ func TestMemberArchiveExportsFullChronologicalDocumentAfterOnlineCleanup(t *test
 	require.NoError(t, err)
 	require.Len(t, archive.Members, 2)
 	assert.EqualValues(t, 1004, archive.Members[0].Records)
+	assert.Equal(t, "成员甲显示名", archive.Members[0].DisplayName)
 	assert.True(t, archive.Rebuilt)
 	deleted, err := CleanupArchivedMemberRequestContent(ctx, report, []int{1})
 	require.NoError(t, err)
@@ -63,6 +66,8 @@ func TestMemberArchiveExportsFullChronologicalDocumentAfterOnlineCleanup(t *test
 	text := output.String()
 	assert.Contains(t, text, "2026年09月01日")
 	assert.Contains(t, text, "2026年09月02日")
+	assert.Contains(t, text, "成员 ID：</strong>1")
+	assert.Contains(t, text, "成员甲显示名")
 	assert.Less(t, strings.Index(text, "第一天请求"), strings.Index(text, "正文最后一行"))
 	assert.Contains(t, text, "正文最后一行&lt;script&gt;")
 	assert.NotContains(t, text, "<script>")

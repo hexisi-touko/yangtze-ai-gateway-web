@@ -9,14 +9,17 @@ import (
 // billing ledger. It is an admin-only audit table and is intentionally not
 // exposed through the ordinary user log endpoints.
 type MemberRequestContent struct {
-	ID          int64  `json:"id" gorm:"primaryKey"`
-	UserID      int    `json:"user_id" gorm:"index"`
-	Username    string `json:"username" gorm:"index;default:''"`
-	RequestID   string `json:"request_id" gorm:"size:64;index"`
-	CreatedAt   int64  `json:"created_at" gorm:"index"`
-	Path        string `json:"path" gorm:"size:200"`
-	Model       string `json:"model" gorm:"size:120;index"`
-	Content     string `json:"content" gorm:"type:text"`
+	ID        int64  `json:"id" gorm:"primaryKey"`
+	UserID    int    `json:"user_id" gorm:"index"`
+	Username  string `json:"username" gorm:"index;default:''"`
+	RequestID string `json:"request_id" gorm:"size:64;index"`
+	CreatedAt int64  `json:"created_at" gorm:"index"`
+	Path      string `json:"path" gorm:"size:200"`
+	Model     string `json:"model" gorm:"size:120;index"`
+	Content   string `json:"content" gorm:"type:text"`
+	// ContentText is a normalized administrator-facing plain-text view. It is
+	// derived on read so existing stored payloads remain backward-compatible.
+	ContentText string `json:"content_text,omitempty" gorm:"-:all"`
 	ContentHash string `json:"content_hash" gorm:"size:64;index"`
 	Bytes       int    `json:"bytes"`
 	Truncated   bool   `json:"truncated"`

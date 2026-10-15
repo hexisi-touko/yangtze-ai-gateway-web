@@ -82,6 +82,7 @@ export interface MemberRequestContent {
   path: string
   model: string
   content: string
+  content_text?: string
   content_hash: string
   bytes: number
   truncated: boolean

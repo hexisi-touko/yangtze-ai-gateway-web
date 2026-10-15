@@ -26,6 +26,7 @@ var memberArchiveRebuildMu sync.Mutex
 
 type MemberRequestArchiveEntry struct {
 	UserID        int    `json:"user_id"`
+	DisplayName   string `json:"display_name"`
 	Username      string `json:"username"`
 	File          string `json:"file"`
 	SHA256        string `json:"sha256"`
@@ -91,6 +92,29 @@ func buildMemberRequestArchive(ctx context.Context, report *model.MemberUsageRep
 		return err
 	}
 	sort.Slice(users, func(i, j int) bool { return users[i].UserID < users[j].UserID })
+	displayNames := make(map[int]string, len(users))
+	if len(users) > 0 && model.DB.Migrator().HasTable(&model.User{}) {
+		ids := make([]int, 0, len(users))
+		for _, user := range users {
+			ids = append(ids, user.UserID)
+		}
+		var identities []struct {
+			ID          int
+			DisplayName string
+			Username    string
+		}
+		if err := model.DB.WithContext(ctx).Model(&model.User{}).
+			Select("id, display_name, username").Where("id IN ?", ids).Find(&identities).Error; err != nil {
+			return err
+		}
+		for _, identity := range identities {
+			name := strings.TrimSpace(identity.DisplayName)
+			if name == "" {
+				name = strings.TrimSpace(identity.Username)
+			}
+			displayNames[identity.ID] = name
+		}
+	}
 	if err := os.MkdirAll(memberArchiveDirectory(), 0700); err != nil {
 		return err
 	}
@@ -100,7 +124,7 @@ func buildMemberRequestArchive(ctx context.Context, report *model.MemberUsageRep
 		if err != nil {
 			return err
 		}
-		entry := MemberRequestArchiveEntry{UserID: user.UserID, Username: user.Username, File: uuid.NewString() + ".jsonl.gz", SourceRecords: count, MaxID: maxID}
+		entry := MemberRequestArchiveEntry{UserID: user.UserID, DisplayName: displayNames[user.UserID], Username: user.Username, File: uuid.NewString() + ".jsonl.gz", SourceRecords: count, MaxID: maxID}
 		name, err := memberArchivePath(entry.File)
 		if err != nil {
 			return err
@@ -128,6 +152,7 @@ func buildMemberRequestArchive(ctx context.Context, report *model.MemberUsageRep
 				if row.Content == "" {
 					continue
 				}
+				row.ContentText = memberRequestPlainText(row.Content)
 				var data []byte
 				data, err = common.Marshal(row)
 				if err != nil {
@@ -373,7 +398,11 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 	}
 	defer compressed.Close()
 	write := func(format string, args ...any) error { _, err := fmt.Fprintf(output, format, args...); return err }
-	if err = write(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>%s - 成员请求文档</title><style>body{font-family:system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 20px;color:#20252b}h1{font-size:24px}h2{font-size:20px;border-bottom:1px solid #ddd;padding-bottom:8px}article{margin:24px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.7}small{color:#59636e}@media print{article{break-inside:auto}}</style><h1>%s · 成员请求文档</h1><p>%s — %s（北京时间）</p><p>记录数：%d。文档包含系统实际采集的成员正文，不包含 AI 回复。</p>`, html.EscapeString(entry.Username), html.EscapeString(entry.Username), time.Unix(report.StartTime, 0).In(memberReportTimezone).Format("2006-01-02"), time.Unix(report.EndTime-1, 0).In(memberReportTimezone).Format("2006-01-02"), entry.Records); err != nil {
+	memberName := strings.TrimSpace(entry.DisplayName)
+	if memberName == "" {
+		memberName = strings.TrimSpace(entry.Username)
+	}
+	if err = write(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>%s - 成员请求文档</title><style>body{font-family:system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 20px;color:#20252b}h1{font-size:24px}h2{font-size:20px;border-bottom:1px solid #ddd;padding-bottom:8px}article{margin:24px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.7}small{color:#59636e}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:16px 0;padding:12px;background:#f5f7f9;border:1px solid #e1e5e8;border-radius:6px}@media print{article{break-inside:auto}}</style><h1>成员请求文档</h1><div class="meta"><div><strong>成员 ID：</strong>%d</div><div><strong>成员名称：</strong>%s</div><div><strong>登录名：</strong>%s</div><div><strong>统计周期：</strong>%s 至 %s（北京时间）</div><div><strong>请求条数：</strong>%d</div></div><p>以下按日期记录系统采集的成员请求正文，不包含 AI 回复。</p>`, html.EscapeString(memberName), entry.UserID, html.EscapeString(memberName), html.EscapeString(entry.Username), time.Unix(report.StartTime, 0).In(memberReportTimezone).Format("2006-01-02"), time.Unix(report.EndTime-1, 0).In(memberReportTimezone).Format("2006-01-02"), entry.Records); err != nil {
 		return err
 	}
 	if archive.Rebuilt {
@@ -405,9 +434,12 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 			var text struct {
 				Content string `json:"content"`
 			}
-			body := row.Content
-			if common.UnmarshalJsonStr(body, &text) == nil {
-				body = text.Content
+			body := row.ContentText
+			if body == "" {
+				body = row.Content
+				if common.UnmarshalJsonStr(body, &text) == nil {
+					body = text.Content
+				}
 			}
 			if err = write("<article><h3>%s</h3><small>模型：%s · 请求编号：%s</small><pre>%s</pre>", stamp.Format("15:04:05"), html.EscapeString(row.Model), html.EscapeString(row.RequestID), html.EscapeString(body)); err != nil {
 				return err

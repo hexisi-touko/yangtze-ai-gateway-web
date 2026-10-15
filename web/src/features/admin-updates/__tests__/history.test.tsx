@@ -54,6 +54,11 @@ it('shows the current business version and lets maintainers expand the baseline'
     </QueryClientProvider>
   )
   expect(await screen.findByText('完整请求正文')).toBeVisible()
+  expect(screen.getByRole('main')).toHaveClass(
+    'min-h-0',
+    'flex-1',
+    'overflow-y-auto'
+  )
   const baseline = screen.getByText('v1.0.0 · 初始版本').closest('details')
   expect(baseline).not.toHaveAttribute('open')
   await userEvent.setup().click(screen.getByText('v1.0.0 · 初始版本'))

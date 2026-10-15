@@ -72,6 +72,7 @@ func CaptureMemberRequestContent(ctx context.Context, userID int, username, requ
 		Bytes:       len(copyOfRaw),
 		Truncated:   truncated,
 	}
+	row.ContentText = memberRequestPlainText(content)
 	if err := model.SaveMemberRequestContent(ctx, row); err != nil {
 		common.SysError(fmt.Sprintf("failed to save member request content: %v", err))
 	}
@@ -387,6 +388,7 @@ func ListMemberRequestContent(ctx context.Context, userID int, start, end int64,
 		if strings.TrimSpace(row.Content) == "" {
 			continue
 		}
+		row.ContentText = memberRequestPlainText(row.Content)
 		cleaned = append(cleaned, row)
 	}
 	return cleaned, nil
@@ -420,6 +422,7 @@ func ListMemberRequestContentPage(ctx context.Context, userID int, start, end, b
 		page.NextCursor = row.ID
 		row.Content = normalizeStoredMemberRequestContent(row.Content)
 		if row.Content != "" {
+			row.ContentText = memberRequestPlainText(row.Content)
 			page.Items = append(page.Items, row)
 		}
 	}
@@ -428,6 +431,20 @@ func ListMemberRequestContentPage(ctx context.Context, userID int, start, end, b
 
 func normalizeStoredMemberRequestContent(content string) string {
 	return memberRequestContentOnly(content)
+}
+
+func memberRequestPlainText(content string) string {
+	normalized := normalizeStoredMemberRequestContent(content)
+	if normalized == "" {
+		return ""
+	}
+	var message struct {
+		Content string `json:"content"`
+	}
+	if common.UnmarshalJsonStr(normalized, &message) == nil && strings.TrimSpace(message.Content) != "" {
+		return message.Content
+	}
+	return normalized
 }
 
 func ListMemberRequestContentAlerts(ctx context.Context, userID int, start, end int64, limit int) ([]model.MemberRequestContentAlert, error) {

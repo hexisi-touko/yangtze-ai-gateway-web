@@ -171,7 +171,9 @@ export function RequestContents(props: {
                 )}
               </p>
             )}
-            <RequestConversation content={selected.content} />
+            <RequestConversation
+              content={selected.content_text || selected.content}
+            />
           </div>
         </Dialog>
       )}

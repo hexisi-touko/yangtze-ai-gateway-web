@@ -28,11 +28,14 @@ function fixture(archive: boolean): UsageReport {
     request_archive: archive
       ? JSON.stringify({
           version: 1,
+          start: 1788192000,
+          end: 1790784000,
           timezone: 'Asia/Shanghai',
           rebuilt: false,
           members: [
             {
               user_id: 12,
+              display_name: '成员甲显示名',
               username: '成员甲',
               records: 23,
               source_records: 23,
@@ -58,6 +61,8 @@ it('exports the selected monthly member rather than the whole statistics JSON', 
   )
   const user = userEvent.setup()
   await user.click(await screen.findByRole('button', { name: 'View' }))
+  expect(await screen.findByText('成员甲显示名')).toBeInTheDocument()
+  expect(screen.getByText(/#12 · 成员甲 · 23/)).toBeInTheDocument()
   await user.click(
     await screen.findByRole('button', { name: 'Export member document' })
   )

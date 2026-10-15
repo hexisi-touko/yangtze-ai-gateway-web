@@ -24,7 +24,7 @@ import {
   downloadMemberDocument,
   rebuildRequestArchive,
 } from '../api'
-import { exportUsageJSON } from '../lib'
+import { buildReadableReportExport, exportUsageJSON } from '../lib'
 import type { UsageReport, UsageSummary } from '../types'
 
 const reportSchema = z.object({
@@ -170,7 +170,11 @@ function ReportDetail(props: { id: number; onClose: () => void }) {
           variant='outline'
           disabled={!query.data}
           onClick={() =>
-            exportUsageJSON(query.data, `member-usage-report-${props.id}.json`)
+            query.data &&
+            exportUsageJSON(
+              buildReadableReportExport(query.data, historicalSummary, archive),
+              `member-usage-report-${props.id}.json`
+            )
           }
         >
           <Download />
@@ -242,9 +246,12 @@ function ReportDetail(props: { id: number; onClose: () => void }) {
                 >
                   <div>
                     <div className='text-sm font-medium'>
-                      {member.username || `#${member.user_id}`}
+                      {member.display_name ||
+                        member.username ||
+                        `#${member.user_id}`}
                     </div>
                     <div className='text-muted-foreground text-xs'>
+                      #{member.user_id} · {member.username || '-'} ·{' '}
                       {member.records.toLocaleString()} {t('Requests')}
                     </div>
                   </div>

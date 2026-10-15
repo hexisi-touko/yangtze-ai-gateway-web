@@ -193,10 +193,13 @@ export async function getMemberRequestContentsPage(input: {
 
 export interface RequestArchive {
   version: number
+  start: number
+  end: number
   rebuilt: boolean
   timezone: string
   members: Array<{
     user_id: number
+    display_name: string
     username: string
     records: number
     source_records: number
