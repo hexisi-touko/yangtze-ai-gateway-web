@@ -1,88 +1,53 @@
 # 管理端 1.0.3 云端发布手册
 
-本手册对应 `admin-v1.0.3`。本地准备阶段只生成源码版本和构建配置，不连接服务器、不上传文件、不切换线上容器。正式发布时由管理员在已有 root PowerShell 会话中执行命令，Xftp 只用于传输版本包和备份文件。
+源码标签：admin-v1.0.3。管理员页面、Git 标签和镜像标签统一使用此版本，Git 提交编号与 UTC 构建时间写入程序和 OCI 镜像标签。源码发布与实际部署分开记录，不修改历史标签来补记部署时间。
 
-## 发布前检查
+## 已核对的生产布局（2026-10-26）
 
-1. 在本地分支 `fix/admin-v1.0.3-deployment` 完成前端测试、类型检查、生产构建、管理员更新日志检查和 Dockerfile 静态检查。
-2. 只提交源码、测试、版本清单、Dockerfile 和本手册。不要提交真实 `.env`、数据库、日志、成员正文、归档、客户端安装包、`node_modules` 或构建产物。
-3. 合并到 `main` 后创建不可改写的 `admin-v1.0.3` 标签。用 `git archive` 生成完整源码包，上传前记录源码提交编号和压缩包 SHA-256。
-4. 云端先确认当前 Compose 文件、服务名、数据挂载、数据库类型、Redis 配置、当前镜像 ID 和磁盘空间。不能假定生产数据库是 SQLite。
+- Compose：/opt/yangtze-admin/compose.yaml，项目 yangtze-admin，服务 new-api。
+- 旧容器：yangtze-admin-new-api-1，镜像 yangtze-new-api:admin-v1.0.2。
+- 当前运行镜像 ID：sha256:a72893100c51af3f0061fac38bb97dc28ec73c90fe064f532c4292800dae73d3。
+- 唯一挂载：/opt/yangtze-admin/data → /data，容器工作目录 /data。
+- 对外端口 3000；核对时磁盘剩余约 32 GB。执行前仍需重新检查。
+- 不调整额度倍率，不重启 CPA，不覆盖生产数据或环境变量。
 
-## Xftp 传输目录
+## 准备发布文件
 
-在服务器创建版本目录，保留旧版本目录：
+1. 完成 Go 测试、前端相关测试、类型检查、生产构建及更新日志一致性检查。
+2. 以 bao / Bxy20070818@qq.com 提交源码，通过 PR 合并主线，再创建不可改写的 admin-v1.0.3 标签。
+3. 从该提交的干净源码构建镜像，BUILD_VERSION=admin-v1.0.3，BUILD_COMMIT 为完整提交 SHA，BUILD_TIME 为实际 UTC 构建时间。
+4. 记录镜像 ID、文件 SHA-256，生成源码压缩包与镜像归档。禁止包含密钥、真实 .env、数据库、成员正文、日志或安装包。
+5. 上传到独立发布目录；不要把仓库自带 docker-compose.yml 覆盖生产 compose.yaml。
 
-```text
-/opt/yangtze-admin/releases/admin-v1.0.3/
-```
+## 切换前检查和备份
 
-上传完整源码压缩包和 SHA-256 校验文件。不要覆盖 `/opt/yangtze-admin/.env`、数据库卷、`data/`、`logs/` 或成员正文归档目录。
+先检查真实运行容器、镜像、挂载、数据库类型和持久化路径。若实际布局不同，停止切换并重新核对。
 
-## 备份
+本次部署脚本只自动处理数据全部位于 /data 的单容器 SQLite 场景。发现外置数据库、额外挂载或未持久化目录时停止，需要对应备份方案。
 
-备份当前 Compose 配置、生产环境文件、旧镜像准确标识、数据库和正文归档。数据库命令根据实际服务类型选择：
+先校验并导入新镜像；确认版本标签、提交 SHA 和镜像 ID 正确，再安排短暂停机。停止 new-api 写入后，备份整个 data 目录（含 SQLite、正文归档和客户端文件），校验备份，保存原 Compose、环境文件、旧镜像和运行时信息。备份目录仅 root 可读。
 
-```bash
-cd /opt/yangtze-admin
-mkdir -p backups/$(date +%Y%m%d-%H%M%S)
-cp compose.yaml .env backups/$(date +%Y%m%d-%H%M%S)/
-docker compose ps
-docker images --no-trunc | head -n 30
-```
-
-PostgreSQL 使用 `pg_dump`，MySQL 使用 `mysqldump`，SQLite 在停止写入或使用一致性备份方式后复制数据库文件。成员正文归档目录必须单独打包并记录文件数量和大小。禁止使用 `docker compose down -v`，防止删除数据卷。
-
-## 构建自研镜像
-
-源码包解压到版本目录后，在该目录构建。生产密钥只从服务器环境读取：
-
-```bash
-cd /opt/yangtze-admin/releases/admin-v1.0.3
-export ADMIN_IMAGE_NAME=yangtze-new-api
-export ADMIN_IMAGE_TAG=admin-v1.0.3
-export BUILD_COMMIT=<合并到-main-后的提交编号>
-export BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-docker build \
-  --build-arg BUILD_VERSION="$ADMIN_IMAGE_TAG" \
-  --build-arg BUILD_COMMIT="$BUILD_COMMIT" \
-  --build-arg BUILD_TIME="$BUILD_TIME" \
-  -t "$ADMIN_IMAGE_NAME:$ADMIN_IMAGE_TAG" .
-```
-
-现有生产 Compose 如果仍然写着上游 `calciumion/new-api:latest`，必须只把 `new-api` 服务的镜像改为自研镜像 `yangtze-new-api:admin-v1.0.3`。数据库、Redis、端口、`/data`、日志和正文归档挂载保持原配置。修改前复制原文件，修改后运行：
-
-```bash
-docker compose config
-docker compose up -d new-api
-docker compose ps
-docker compose logs --tail=200 new-api
-```
+切换仅修改生产 Compose 中 new-api 的 image 字段，通过 Compose 解析结果对比保证其他设置一致，再以 --no-deps --no-build 重建该服务。不能执行 down -v 或删除数据卷。
 
 ## 验收
 
-- `/api/status` 返回 HTTP 200。
-- 管理员可以登录，更新日志页面可以上下滚动。
-- `/api/admin-updates` 管理员访问返回 200，返回内容包含 `1.0.3`、提交编号和构建时间。
-- 成员请求正文可以完整显示，长对话和短对话均可查看。
-- 成员月度归档和 HTML 导出可以按成员 ID、管理员显示名、登录名和日期读取。
-- 成员分析、官方价格、参考价值、节省金额和缓存指标仍可显示。
-- 新测试成员发送请求后，管理员端能看到新正文、时间和工作项目。
-- `docker compose logs` 没有数据库迁移失败、Redis 认证失败、静态资源缺失或归档路径错误。
+- /api/status 正常，返回版本 admin-v1.0.3；容器实际镜像与发布清单一致。
+- 管理员登录与更新日志正常，/api/admin-updates 返回 1.0.3、正确的提交 SHA 和构建时间。
+- 新发长短请求均显示明文，正常中文、英文、代码保留；独立内部通知隐藏。
+- 月度归档按成员及日期导出，下载后浏览器打开中文正常。
+- 登记采购成本且部分请求可核价时显示部分节省估算；待核算内容保持标注。
+- 新使用日志显示实际记录的推理强度；旧数据没有此字段时不猜测补填。
+- 成员额度、渠道调用、客户端安装包发布仍可用；远程配置仅向支持该功能的客户端生效。
+- 自动健康检查不等于完成业务验收。实际成员请求涉及上游费用，使用测试成员并记录结果。
 
 ## 回滚
 
-验收失败时，记录错误日志和当前容器 ID，把 Compose 中的镜像改回备份的旧镜像标签，再执行：
+回滚先保留失败版本日志和当前数据，再恢复备份的 Compose 与准确旧镜像，重建 new-api。回滚脚本不自动覆盖数据库，也不删除新写入的正文。
 
-```bash
-docker compose up -d new-api
-docker compose ps
-docker compose logs --tail=200 new-api
-```
-
-不要删除新旧数据卷。若新版本产生数据库结构变化，镜像回退不等于数据库回退，必须根据发布前的数据库备份决定是否恢复。
+本次新增客户端配置表；旧镜像一般忽略新增表，但不能仅凭换回镜像推定数据兼容。若必须恢复数据库，需在停止写入后核对，保留升级后数据，明确恢复会舍弃备份之后的写入。
 
 ## 发布记录
 
-验收成功后记录：源码提交编号、源码包 SHA-256、镜像 digest、构建时间、切换时间、数据库类型、备份位置和验收结果。云端正式发布时间补写到 `pkg/adminversion/versions.json` 和 `docs/ADMIN_CHANGELOG.md`，不要提前伪造部署成功状态。
+完成后记录源码提交、Git 标签、镜像 ID / digest、构建及切换时间、备份目录、验收项与结果。记录写入服务器发布目录，并在 GitHub Release 补充部署结论。镜像与源码标签不改写。
+
+如本次部署不再使用临时 SSH 公钥，应只删除注释为 admin-v103-deploy-temporary 或 admin-v103-deploy-temporary-plain 的两条记录，保留其他公钥。
