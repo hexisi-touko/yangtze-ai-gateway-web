@@ -172,7 +172,8 @@ export function RequestContents(props: {
               </p>
             )}
             <RequestConversation
-              content={selected.content_text || selected.content}
+              content={selected.content}
+              plainText={selected.content_text}
             />
           </div>
         </Dialog>
@@ -292,7 +293,25 @@ function extractConversation(content: string): ConversationMessage[] {
 
 function isInternalHarnessMessage(text: string): boolean {
   const normalized = text.trim().replaceAll(/\s+/g, ' ')
+  const standaloneNotification =
+    /^<subagent_notification\b[^>]*>.*<\/subagent_notification\s*>$/is.test(
+      text.trim()
+    )
+      ? (
+          text
+            .trim()
+            .toLowerCase()
+            .match(/<subagent_notification/g) ?? []
+        ).length === 1 &&
+        (
+          text
+            .trim()
+            .toLowerCase()
+            .match(/<\/subagent_notification/g) ?? []
+        ).length === 1
+      : false
   return (
+    standaloneNotification ||
     /^(?:background (?:subagent|agent) [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} finished and will do no further work\b|agent [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} sent a message:)/i.test(
       normalized
     ) ||
@@ -301,9 +320,20 @@ function isInternalHarnessMessage(text: string): boolean {
   )
 }
 
-function RequestConversation({ content }: { content: string }) {
+function RequestConversation({
+  content,
+  plainText,
+}: {
+  content: string
+  plainText?: string
+}) {
   const { t } = useTranslation()
-  const messages = extractConversation(content)
+  // content_text is already extracted by the backend. A member's JSON/code
+  // is plain text here, not another transport envelope to parse recursively.
+  const messages: ConversationMessage[] =
+    plainText !== undefined
+      ? [{ role: 'user', text: plainText, system: false }]
+      : extractConversation(content)
   // The administrator view is intentionally limited to member-authored
   // requests. System/developer prompts and transport metadata are not useful
   // for the work review and should never be rendered here.

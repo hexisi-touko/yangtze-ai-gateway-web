@@ -46,7 +46,9 @@ describe('client release publishing', () => {
         published = true
       }
       const data =
-        config.method === 'post'
+        config.url === '/api/client-config/'
+          ? { success: true, data: [] }
+          : config.method === 'post'
           ? { success: true, data: { ...release, published } }
           : { success: true, data: [{ ...release, published }] }
       return {

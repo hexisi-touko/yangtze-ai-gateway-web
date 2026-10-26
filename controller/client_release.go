@@ -77,7 +77,7 @@ func validateClientReleaseRequest(request *clientReleaseRequest) error {
 		return errors.New("client_release_invalid_download_url")
 	}
 	request.DownloadURL = parsed.String()
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLocalReleaseHost(parsed.Hostname())) {
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (isLocalReleaseHost(parsed.Hostname()) || isAllowedHTTPReleaseURL(parsed))) {
 		return errors.New("client_release_download_url_must_use_https")
 	}
 	request.FileName = strings.TrimSpace(request.FileName)
@@ -88,6 +88,18 @@ func validateClientReleaseRequest(request *clientReleaseRequest) error {
 		return errors.New("client_release_invalid_file_name")
 	}
 	return nil
+}
+
+// The compatibility switch is restricted to one explicit origin, never all HTTP hosts.
+func isAllowedHTTPReleaseURL(candidate *url.URL) bool {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("CLIENT_RELEASE_ALLOW_INSECURE_HTTP")), "true") {
+		return false
+	}
+	allowed, err := url.Parse(strings.TrimSpace(os.Getenv("CLIENT_RELEASE_HTTP_ORIGIN")))
+	return err == nil && allowed.Scheme == "http" && allowed.Hostname() != "" &&
+		allowed.User == nil && allowed.RawQuery == "" && allowed.Fragment == "" &&
+		(allowed.Path == "" || allowed.Path == "/") &&
+		candidate.Scheme == "http" && strings.EqualFold(candidate.Host, allowed.Host)
 }
 
 func isLocalReleaseHost(host string) bool {

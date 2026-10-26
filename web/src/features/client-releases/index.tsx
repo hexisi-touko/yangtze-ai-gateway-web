@@ -25,6 +25,7 @@ import {
   setClientReleasePublished,
 } from './api'
 import { ReleaseEditorDialog } from './components/release-editor-dialog'
+import { RemoteConfigPanel } from './components/remote-config-panel'
 import type { ClientRelease } from './types'
 
 function formatFileSize(bytes: number): string {
@@ -95,9 +96,10 @@ export function ClientReleases() {
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='mx-auto w-full max-w-[1440px] space-y-4'>
+          <div className='mx-auto w-full max-w-[1440px] space-y-8'>
+            <div className='space-y-4'>
             <p className='text-muted-foreground text-sm'>
-              {t('Upload an exe in the release form. The server stores the file and publishes its download URL with the version.')}
+              {t('Upload the Windows Setup installer, not the Portable build. Published releases are checked automatically; existing clients need one manual install to gain updater support.')}
             </p>
             {releases.isPending && (
               <div className='text-muted-foreground rounded-lg border py-12 text-center text-sm' role='status'>
@@ -212,6 +214,8 @@ export function ClientReleases() {
                 </table>
               </div>
             )}
+            </div>
+            <RemoteConfigPanel />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

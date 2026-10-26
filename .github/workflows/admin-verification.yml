@@ -42,9 +42,9 @@ jobs:
       - name: Check frontend types
         working-directory: web
         run: bun run typecheck
-      - name: Test member analysis and admin history
+      - name: Test member analysis, reasoning effort and admin history
         working-directory: web
-        run: bun run test src/features/member-usage/__tests__ src/features/admin-updates/__tests__
+        run: bun run test src/features/member-usage/__tests__ src/features/admin-updates/__tests__ src/features/client-releases/__tests__ src/features/usage-logs/lib/__tests__/reasoning-effort.test.ts
       - name: Build production frontend
         working-directory: web
         run: bun run build

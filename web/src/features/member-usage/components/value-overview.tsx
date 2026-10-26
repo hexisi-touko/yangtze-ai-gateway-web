@@ -377,6 +377,13 @@ export function ValueOverview(props: { data: ValueSummary }) {
       <div>
         {t('Official reference value')} - {t('Actual procurement cost')}
       </div>
+      {canCompare && priced < records && (
+        <p className='text-muted-foreground'>
+          {t(
+            'Partial savings estimate: priced usage minus all registered procurement costs. Pending usage is excluded, not free.'
+          )}
+        </p>
+      )}
       <div>
         {t('Value multiplier')}:{' '}
         {canCompare ? `${multiplier.toFixed(2)}×` : t('Not calculated')}
@@ -407,8 +414,15 @@ export function ValueOverview(props: { data: ValueSummary }) {
         {t('Hover a value to view model, price and calculation details.')}{' '}
         {t('value_nonprofit_scope')}
       </p>
+      {canCompare && priced < records && (
+        <p className='text-muted-foreground text-xs' role='status'>
+          {t(
+            'Partial savings estimate: priced usage minus all registered procurement costs. Pending usage is excluded, not free.'
+          )}
+        </p>
+      )}
       {missingPriceRecords > 0 && (
-        <p className='border-amber-500/40 bg-amber-500/5 text-muted-foreground rounded-md border px-3 py-2 text-xs'>
+        <p className='text-muted-foreground rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs'>
           {t('value_pending_price_explanation', {
             count: missingPriceRecords,
           })}

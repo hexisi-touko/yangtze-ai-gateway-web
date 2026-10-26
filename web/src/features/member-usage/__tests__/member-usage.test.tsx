@@ -215,6 +215,92 @@ describe('member usage', () => {
     ).toBeInTheDocument()
   })
 
+  it('does not present a subagent notification envelope as the member message', async () => {
+    requestContentApi.getMemberRequestContents.mockResolvedValue([
+      {
+        id: 4,
+        user_id: 1,
+        username: 'researcher',
+        request_id: 'request-subagent-notification',
+        created_at: 1_789_600_003,
+        path: '/v1/responses',
+        model: 'gpt-6-astra',
+        content:
+          '{"role":"user","content":"<subagent_notification>\\n{\\"agent_path\\":\\"01a177aa-dca9-7430-bcd5-84dabde84390\\",\\"status\\":\\"shutdown\\"}\\n</subagent_notification>"}',
+        content_hash: 'subagent-notification-content-hash',
+        bytes: 160,
+        truncated: false,
+      },
+    ])
+    requestContentApi.getMemberRequestContentAlerts.mockResolvedValue([])
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <QueryClientProvider client={client}>
+        <RequestContents
+          range={{ start: 1_789_500_000, end: 1_789_700_000 }}
+          members={[]}
+        />
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View request content' })
+    )
+
+    expect(
+      screen.queryByText(/subagent_notification|agent_path/)
+    ).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('Conversation content hidden')
+    ).toBeInTheDocument()
+  })
+
+  it('filters an internal notification from mixed history and keeps the member request', async () => {
+    requestContentApi.getMemberRequestContents.mockResolvedValue([
+      {
+        id: 5,
+        user_id: 1,
+        username: 'researcher',
+        request_id: 'request-mixed-history',
+        created_at: 1_789_600_004,
+        path: '/v1/responses',
+        model: 'gpt-6-astra',
+        content:
+          '{"input":[{"role":"user","content":"请保留这段正常请求"},{"role":"user","content":"<subagent_notification>\\n{\\"status\\":\\"shutdown\\"}\\n</subagent_notification>"}]}',
+        content_hash: 'mixed-history-content-hash',
+        bytes: 180,
+        truncated: false,
+      },
+    ])
+    requestContentApi.getMemberRequestContentAlerts.mockResolvedValue([])
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <QueryClientProvider client={client}>
+        <RequestContents
+          range={{ start: 1_789_500_000, end: 1_789_700_000 }}
+          members={[]}
+        />
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      await screen.findByRole('button', { name: 'View request content' })
+    )
+
+    expect(await screen.findByText('请保留这段正常请求')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/subagent_notification|shutdown/)
+    ).not.toBeInTheDocument()
+  })
+
   it('does not present a forwarded agent message as the member message', async () => {
     requestContentApi.getMemberRequestContents.mockResolvedValue([
       {

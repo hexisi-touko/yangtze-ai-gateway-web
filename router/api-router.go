@@ -316,6 +316,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		apiRouter.GET("/client-releases/latest", middleware.DisableCache(), controller.GetLatestClientRelease)
+		apiRouter.GET("/client-config/latest", middleware.DisableCache(), middleware.UserAuth(), controller.GetLatestClientConfig)
 		apiRouter.GET("/client-releases/files/:file_name", middleware.DisableCache(), controller.DownloadClientReleaseFile)
 		clientReleaseRoute := apiRouter.Group("/client-releases", middleware.DisableCache(), middleware.AdminAuth())
 		{
@@ -325,6 +326,14 @@ func SetApiRouter(router *gin.Engine) {
 			clientReleaseRoute.PUT("/:id", middleware.CriticalRateLimit(), controller.UpdateClientRelease)
 			clientReleaseRoute.POST("/:id/:action", middleware.CriticalRateLimit(), controller.SetClientReleasePublished)
 			clientReleaseRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.DeleteClientRelease)
+		}
+		clientConfigReleaseRoute := apiRouter.Group("/client-config", middleware.DisableCache(), middleware.AdminAuth())
+		{
+			clientConfigReleaseRoute.GET("/", controller.ListClientConfigReleases)
+			clientConfigReleaseRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateClientConfigRelease)
+			clientConfigReleaseRoute.PUT("/:id", middleware.CriticalRateLimit(), controller.UpdateClientConfigRelease)
+			clientConfigReleaseRoute.POST("/:id/:action", middleware.CriticalRateLimit(), controller.SetClientConfigReleasePublished)
+			clientConfigReleaseRoute.DELETE("/:id", middleware.CriticalRateLimit(), controller.DeleteClientConfigRelease)
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)

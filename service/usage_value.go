@@ -841,7 +841,10 @@ func aggregateUsageValue(logs []model.Log, prices []model.UsageReferencePrice, c
 	// value of the members' usage minus the money actually paid for the
 	// upstream subscription/API. Server and analysis costs remain visible in
 	// ActualTotalCost, but are not mixed into the procurement comparison.
-	if s.Records > 0 && s.Priced == s.Records && !procurementExpense.IsZero() {
+	// Unknown usage stays pending, but must not hide the value already priced.
+	// Subtract the full registered purchase cost from that known subtotal; when
+	// Priced < Records this is a partial estimate, explicitly labelled by the UI.
+	if s.Priced > 0 && procurementExpense.IsPositive() {
 		s.SavingsComparable = true
 		// A cost higher than the reference value means no saving; never expose a
 		// negative amount in the administrator view.

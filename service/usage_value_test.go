@@ -244,6 +244,26 @@ func TestValueSavingsNeverGoesNegativeWhenCostExceedsReference(t *testing.T) {
 	assert.Equal(t, "0.1", result.ValueMultiplier)
 }
 
+func TestValuePartialPricingStillShowsConservativeSavings(t *testing.T) {
+	logs := []model.Log{
+		{UserId: 1, ModelName: "a", Type: model.LogTypeConsume, CreatedAt: 150, PromptTokens: 1_000_000},
+		{UserId: 1, ModelName: "a", Type: model.LogTypeConsume, CreatedAt: 151, Other: `{"model_price":-1}`},
+	}
+	prices := []model.UsageReferencePrice{{Model: "a", EffectiveAt: 100, Input: "10", Output: "0"}}
+	costs := []model.UsageCost{{Category: "subscription", Amount: "3", IncurredAt: 120}}
+	result := aggregateUsageValue(logs, prices, costs, 100, 200)
+	assert.Equal(t, 2, result.Records)
+	assert.Equal(t, 1, result.Priced)
+	assert.Equal(t, 1, result.Rows[0].Pending["missing_usage"])
+	assert.True(t, result.SavingsComparable)
+	assert.Equal(t, "7", result.SavingsValue)
+	// Missing usage remains unknown, including when no records can be priced.
+	missing := aggregateUsageValue(logs[1:], prices, costs, 100, 200)
+	assert.False(t, missing.SavingsComparable)
+	noCost := aggregateUsageValue(logs, prices, nil, 100, 200)
+	assert.False(t, noCost.SavingsComparable)
+}
+
 func TestValuePricesUpstreamCachedUsageWhenPromptAlreadyIncludesCache(t *testing.T) {
 	logs := []model.Log{{
 		UserId: 1, ModelName: "gpt-5.5", Type: model.LogTypeConsume, CreatedAt: 150,

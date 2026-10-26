@@ -33,3 +33,28 @@ export type LatestClientRelease = {
   release: ClientRelease | null
   update_available: boolean
 }
+
+export type ClientRemoteConfig = {
+  update_check_interval_minutes: number
+  auto_check_updates: boolean
+}
+
+export type ClientConfigRelease = {
+  id: number
+  version: number
+  release_notes: string
+  config: ClientRemoteConfig
+  mandatory: boolean
+  published: boolean
+  created_by: number
+  published_at: number
+  created_at: number
+  updated_at: number
+}
+
+export type ClientConfigReleaseInput = {
+  version: number
+  release_notes: string
+  config: ClientRemoteConfig
+  mandatory: boolean
+}

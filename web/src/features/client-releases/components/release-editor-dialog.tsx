@@ -108,7 +108,7 @@ export function ReleaseEditorDialog(props: {
         if (!open && !mutation.isPending) props.onClose()
       }}
       title={t(props.release ? 'Edit client release' : 'New client release')}
-      description={t('Choose an exe here to upload it to this New API server. The download URL will be filled in automatically.')}
+      description={t('Upload the Windows Setup installer, not the Portable build. The download URL and checksum will be filled in automatically.')}
       contentClassName='sm:max-w-2xl'
       bodyClassName='space-y-4'
       footer={
@@ -184,12 +184,14 @@ export function ReleaseEditorDialog(props: {
             disabled={uploading || mutation.isPending}
             onChange={(event) => {
               const file = event.target.files?.[0]
-              if (file) upload.mutate(file)
+              if (file?.name.toLowerCase().includes('portable')) {
+                toast.error(t('Portable builds cannot perform in-place updates. Upload the Setup installer.'))
+              } else if (file) upload.mutate(file)
               event.target.value = ''
             }}
           />
           <p className='text-muted-foreground text-xs'>
-            {t('Choose an exe to upload it to this New API server. Existing files are not replaced.')}
+            {t('Select the Setup installer ending in -Setup-...exe. Do not select the Portable package; existing uploaded files are not replaced.')}
           </p>
           {uploading && <p className='text-muted-foreground text-xs' role='status'>{t('Uploading installer...')}</p>}
         </div>

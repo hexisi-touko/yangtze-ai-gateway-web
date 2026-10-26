@@ -49,6 +49,26 @@ const data: ValueSummary = {
 }
 
 describe('non-profit value accounting', () => {
+  it('labels savings from partially priced usage as an estimate', () => {
+    render(
+      <ValueOverview
+        data={{
+          ...data,
+          records: 2,
+          priced: 1,
+          reference_value: '2468.546097',
+          actual_procurement_cost: '100',
+          savings_value: '2368.546097',
+          value_multiplier: '24.68546097',
+          savings_comparable: true,
+        }}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Partial savings estimate: priced usage minus all registered procurement costs. Pending usage is excluded, not free.'
+    )
+    expect(screen.getByText('¥2,368.546097')).toBeInTheDocument()
+  })
   it('does not present missing prices or unregistered costs as free service', () => {
     render(<ValueOverview data={data} />)
     expect(screen.getAllByText('Not calculated').length).toBeGreaterThan(0)

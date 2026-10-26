@@ -132,6 +132,12 @@ func TestMemberRequestContentOnlySkipsForwardedAgentMessage(t *testing.T) {
 	assert.Empty(t, content)
 }
 
+func TestMemberRequestContentOnlySkipsSubagentNotificationEnvelope(t *testing.T) {
+	content := memberRequestContentOnly(`{"input":[{"role":"user","content":"<subagent_notification>\n{\"agent_path\":\"01a177aa-dca9-7430-bcd5-84dabde84390\",\"status\":\"shutdown\"}\n</subagent_notification>"}]}`)
+
+	assert.Empty(t, content)
+}
+
 func TestMemberRequestContentOnlyUsesDirectUserMessage(t *testing.T) {
 	content := memberRequestContentOnly(`{"role":"user","content":"请总结今天的工作"}`)
 
@@ -157,11 +163,23 @@ func TestMemberRequestPreservesNormalEnglishAndCode(t *testing.T) {
 	}
 }
 
-func TestMemberRequestSkipsReminderAndPreservesPreviousTurn(t *testing.T) {
+func TestMemberRequestFiltersReminderFromMixedHistory(t *testing.T) {
 	body, err := common.Marshal(map[string]any{"input": []any{map[string]any{"role": "user", "content": "请修复这个错误"}, map[string]any{"role": "user", "content": repeatedToolCallReminder}}})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"role":"user","content":"请修复这个错误"}`, memberRequestContentOnly(string(body)))
 	assert.Empty(t, memberRequestContentOnly(repeatedToolCallReminder))
+}
+
+func TestMemberRequestPreservesQuotedNotificationAndFiltersMixedHistory(t *testing.T) {
+	notice := `<subagent_notification>{"agent_path":"01a177aa-dca9-7430-bcd5-84dabde84390","status":"shutdown"}</subagent_notification>`
+	for _, text := range []string{"请解释这段日志：\n" + notice, "```xml\n" + notice + "\n```", notice + "\n请解释中间这段文字\n" + notice, strings.Repeat("长中文正文", 20000) + "\n代码示例：" + notice} {
+		body, err := common.Marshal(map[string]any{"role": "user", "content": text})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(body), memberRequestContentOnly(string(body)))
+	}
+	body, err := common.Marshal(map[string]any{"input": []any{map[string]any{"role": "user", "content": "之前的问题"}, map[string]any{"role": "user", "content": notice}}})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"role":"user","content":"之前的问题"}`, memberRequestContentOnly(string(body)))
 }
 
 func TestMemberRequestDefaultPreservesLongTextAndLegacyPayload(t *testing.T) {

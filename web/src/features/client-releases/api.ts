@@ -4,6 +4,8 @@ import type {
   ClientRelease,
   ClientReleaseInput,
   LatestClientRelease,
+  ClientConfigRelease,
+  ClientConfigReleaseInput,
 } from './types'
 
 function unwrap<T>(response: { success: boolean; message?: string; data: T }): T {
@@ -58,5 +60,34 @@ export async function setClientReleasePublished(
 
 export async function deleteClientRelease(id: number): Promise<void> {
   const response = await api.delete(`/api/client-releases/${id}`)
+  unwrap(response.data)
+}
+
+export async function getClientConfigReleases(): Promise<ClientConfigRelease[]> {
+  const response = await api.get('/api/client-config/')
+  return unwrap(response.data)
+}
+
+export async function saveClientConfigRelease(
+  input: ClientConfigReleaseInput,
+  id?: number
+): Promise<ClientConfigRelease> {
+  const response = id
+    ? await api.put(`/api/client-config/${id}`, input)
+    : await api.post('/api/client-config/', input)
+  return unwrap(response.data)
+}
+
+export async function setClientConfigReleasePublished(
+  id: number,
+  published: boolean
+): Promise<ClientConfigRelease> {
+  const action = published ? 'publish' : 'unpublish'
+  const response = await api.post(`/api/client-config/${id}/${action}`)
+  return unwrap(response.data)
+}
+
+export async function deleteClientConfigRelease(id: number): Promise<void> {
+  const response = await api.delete(`/api/client-config/${id}`)
   unwrap(response.data)
 }

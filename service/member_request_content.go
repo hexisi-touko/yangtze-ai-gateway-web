@@ -174,10 +174,23 @@ func memberMessages(value any) []string {
 
 func isInternalHarnessMessage(text string) bool {
 	normalized := strings.Join(strings.Fields(text), " ")
-	return internalHarnessMessagePattern.MatchString(normalized) || normalized == repeatedToolCallReminder
+	return isStandaloneSubagentNotification(text) || internalHarnessMessagePattern.MatchString(normalized) || normalized == repeatedToolCallReminder
+}
+
+func isStandaloneSubagentNotification(text string) bool {
+	normalized := strings.TrimSpace(text)
+	if !subagentNotificationPattern.MatchString(normalized) {
+		return false
+	}
+	// A member may quote one or more notification tags in an otherwise normal
+	// request. Only a payload made of one complete notification is internal.
+	lower := strings.ToLower(normalized)
+	return strings.Count(lower, "<subagent_notification") == 1 &&
+		strings.Count(lower, "</subagent_notification") == 1
 }
 
 // Match complete runtime envelopes, not ordinary English conclusions or quoted logs.
+var subagentNotificationPattern = regexp.MustCompile(`(?is)^<subagent_notification\b[^>]*>.*?</subagent_notification\s*>$`)
 var internalHarnessMessagePattern = regexp.MustCompile(`(?i)^(?:background (?:subagent|agent) [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} finished and will do no further work\b|agent [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} sent a message:)`)
 
 const repeatedToolCallReminder = "You are repeating the exact same tool call with identical arguments. Carefully analyze the previous result before calling again; if the task is not complete, try a different approach or different arguments instead of repeating the call."

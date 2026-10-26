@@ -398,6 +398,11 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 	}
 	defer compressed.Close()
 	write := func(format string, args ...any) error { _, err := fmt.Fprintf(output, format, args...); return err }
+	// A UTF-8 signature also makes Windows editors detect Chinese correctly
+	// when a downloaded document is opened outside the browser.
+	if err = write("\uFEFF"); err != nil {
+		return err
+	}
 	memberName := strings.TrimSpace(entry.DisplayName)
 	if memberName == "" {
 		memberName = strings.TrimSpace(entry.Username)
@@ -412,6 +417,7 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 	}
 	reader := bufio.NewReader(compressed)
 	var lastDay string
+	var scanned int64
 	var seen int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -419,9 +425,18 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 		}
 		line, readErr := reader.ReadBytes('\n')
 		if len(line) > 0 {
+			scanned++
 			var row model.MemberRequestContent
 			if err = common.Unmarshal(line, &row); err != nil {
 				return err
+			}
+			// Older archives may contain internal harness notifications that were
+			// captured before the request filter was added. Normalize them during
+			// export as well, so a historical document never exposes transport
+			// metadata as a member request.
+			row.Content = normalizeStoredMemberRequestContent(row.Content)
+			if strings.TrimSpace(row.Content) == "" {
+				continue
 			}
 			stamp := time.Unix(row.CreatedAt, 0).In(memberReportTimezone)
 			day := stamp.Format("2006年01月02日")
@@ -431,16 +446,7 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 				}
 				lastDay = day
 			}
-			var text struct {
-				Content string `json:"content"`
-			}
-			body := row.ContentText
-			if body == "" {
-				body = row.Content
-				if common.UnmarshalJsonStr(body, &text) == nil {
-					body = text.Content
-				}
-			}
+			body := memberRequestPlainText(row.Content)
 			if err = write("<article><h3>%s</h3><small>模型：%s · 请求编号：%s</small><pre>%s</pre>", stamp.Format("15:04:05"), html.EscapeString(row.Model), html.EscapeString(row.RequestID), html.EscapeString(body)); err != nil {
 				return err
 			}
@@ -461,8 +467,16 @@ func ExportMemberRequestDocument(ctx context.Context, report *model.MemberUsageR
 			return readErr
 		}
 	}
-	if seen != entry.Records {
+	// `Records` is the number of rows physically stored in the archive file;
+	// `SourceRecords` may be larger because current builds omit internal-only
+	// rows while retaining the high-water mark for cleanup validation.
+	if scanned != entry.Records {
 		return errors.New("member_usage_archive_invalid_file")
+	}
+	if scanned > seen {
+		if err = write("<p>本次展示 %d 条成员请求，已隐藏 %d 条客户端内部通知。原归档文件保持不变。</p>", seen, scanned-seen); err != nil {
+			return err
+		}
 	}
 	return write("</html>")
 }

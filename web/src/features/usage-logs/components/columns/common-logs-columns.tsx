@@ -47,7 +47,12 @@ import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
-import { formatModelName, parseLogOther } from '../../lib/format'
+import {
+  formatModelName,
+  getReasoningEffortLabel,
+  getReasoningEffortVariant,
+  parseLogOther,
+} from '../../lib/format'
 import {
   isDisplayableLogType,
   isTimingLogType,
@@ -480,6 +485,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         if (!isDisplayableLogType(log.type)) return null
 
         const modelInfo = formatModelName(log)
+        const other = parseLogOther(log.other)
+        const reasoningEffort = other?.reasoning_effort?.trim()
 
         return (
           <div className='flex w-fit flex-col gap-0.5'>
@@ -487,6 +494,15 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               modelName={modelInfo.name}
               actualModel={modelInfo.actualModel}
             />
+            {reasoningEffort && (
+              <StatusBadge
+                label={`${t('Reasoning Effort')}: ${t(getReasoningEffortLabel(reasoningEffort))}`}
+                variant={getReasoningEffortVariant(reasoningEffort)}
+                size='sm'
+                copyable={false}
+                className='w-fit !text-[11px]'
+              />
+            )}
           </div>
         )
       },

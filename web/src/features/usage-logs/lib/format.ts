@@ -186,6 +186,27 @@ export function getReasoningEffortVariant(
   }
 }
 
+export function getReasoningEffortLabel(effort: string | undefined): string {
+  switch (effort?.trim().toLowerCase()) {
+    case 'max':
+      return 'Maximum'
+    case 'xhigh':
+      return 'Extra high'
+    case 'high':
+      return 'High'
+    case 'medium':
+      return 'Medium'
+    case 'low':
+      return 'Low'
+    case 'minimal':
+      return 'Minimal'
+    case 'none':
+      return 'None'
+    default:
+      return 'Unknown'
+  }
+}
+
 /**
  * Get time color based on duration (in seconds)
  */

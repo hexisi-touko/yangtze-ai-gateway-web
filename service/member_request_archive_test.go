@@ -2,12 +2,15 @@ package service
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"os"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +45,7 @@ func TestMemberArchiveExportsFullChronologicalDocumentAfterOnlineCleanup(t *test
 	rows := []model.MemberRequestContent{
 		{UserID: 1, Username: "成员甲", CreatedAt: report.StartTime + 86401, Content: long},
 		{UserID: 1, Username: "成员甲", CreatedAt: report.StartTime + 1, Content: `{"input":[{"role":"system","content":"系统提示"},{"role":"user","content":"第一天请求"}]}`},
+		{UserID: 1, Username: "成员甲", CreatedAt: report.StartTime + 3, Content: `{"role":"user","content":"<subagent_notification>\n{\"status\":\"shutdown\"}\n</subagent_notification>"}`},
 		{UserID: 2, Username: "成员乙", CreatedAt: report.StartTime + 2, Content: "其他成员的内容"},
 		{UserID: 1, Username: "成员甲", CreatedAt: report.EndTime, Content: "下个月内容"},
 	}
@@ -60,10 +64,12 @@ func TestMemberArchiveExportsFullChronologicalDocumentAfterOnlineCleanup(t *test
 	assert.True(t, archive.Rebuilt)
 	deleted, err := CleanupArchivedMemberRequestContent(ctx, report, []int{1})
 	require.NoError(t, err)
-	assert.EqualValues(t, 1004, deleted)
+	assert.EqualValues(t, 1005, deleted)
 	var output bytes.Buffer
 	require.NoError(t, ExportMemberRequestDocument(ctx, report, 1, &output))
 	text := output.String()
+	assert.True(t, strings.HasPrefix(text, "\uFEFF<!doctype html>"))
+	assert.True(t, utf8.Valid(output.Bytes()))
 	assert.Contains(t, text, "2026年09月01日")
 	assert.Contains(t, text, "2026年09月02日")
 	assert.Contains(t, text, "成员 ID：</strong>1")
@@ -74,10 +80,49 @@ func TestMemberArchiveExportsFullChronologicalDocumentAfterOnlineCleanup(t *test
 	assert.NotContains(t, text, "其他成员的内容")
 	assert.NotContains(t, text, "下个月内容")
 	assert.NotContains(t, text, "系统提示")
+	assert.NotContains(t, text, "subagent_notification")
 	assert.Equal(t, 1004, strings.Count(text, "<article>"))
 	var remaining int64
 	require.NoError(t, db.Model(&model.MemberRequestContent{}).Count(&remaining).Error)
 	assert.EqualValues(t, 2, remaining)
+}
+
+func TestLegacyArchiveExportFiltersInternalRowsWithoutChangingArchive(t *testing.T) {
+	db, report := memberArchiveFixture(t)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&model.MemberRequestContent{UserID: 1, CreatedAt: report.StartTime + 1, Content: "正文"}).Error)
+	archive, err := EnsureMemberRequestArchive(ctx, report)
+	require.NoError(t, err)
+	entry := &archive.Members[0]
+	path, err := memberArchivePath(entry.File)
+	require.NoError(t, err)
+	var compressed bytes.Buffer
+	w := gzip.NewWriter(&compressed)
+	for _, content := range []string{
+		`{"role":"user","content":"中文正文与代码 <script>示例</script>"}`,
+		`{"role":"user","content":"<subagent_notification>{\"status\":\"shutdown\"}</subagent_notification>"}`,
+	} {
+		encoded, encodeErr := common.Marshal(model.MemberRequestContent{UserID: 1, CreatedAt: report.StartTime + 1, Content: content})
+		require.NoError(t, encodeErr)
+		_, err = w.Write(append(encoded, '\n'))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, os.WriteFile(path, compressed.Bytes(), 0600))
+	entry.Records, entry.SourceRecords = 2, 2
+	entry.SHA256, err = memberArchiveChecksum(path)
+	require.NoError(t, err)
+	encoded, err := common.Marshal(archive)
+	require.NoError(t, err)
+	report.RequestArchive = string(encoded)
+	var document bytes.Buffer
+	require.NoError(t, ExportMemberRequestDocument(ctx, report, 1, &document))
+	assert.Contains(t, document.String(), "中文正文与代码 &lt;script&gt;示例&lt;/script&gt;")
+	assert.NotContains(t, document.String(), "subagent_notification")
+	assert.Contains(t, document.String(), "本次展示 1 条成员请求，已隐藏 1 条客户端内部通知")
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, compressed.Bytes(), after)
 }
 
 func TestMemberArchiveMissingOrCorruptFileBlocksCleanup(t *testing.T) {
